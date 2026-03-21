@@ -6,7 +6,6 @@ import { WindowManager } from '../../common/utils/WindowManager';
 import { RouterManager } from '../../common/utils/RouterManager';
 import { ToastService } from '../../common/utils/ToastService';
 import { UserSummarySnapshotService } from '../../services/storage/UserSummarySnapshotService';
-import { AppSettingsService } from '../../services/storage/AppSettingsService';
 import { AuthService } from '../../services/auth/AuthService';
 import { ApiClient } from '../../services/network/ApiClient';
 import { CookieStore } from '../../services/network/CookieStore';
@@ -603,30 +602,6 @@ export struct ProfilePage {
     }
   }
 
-  private openTrustRequirements(): void {
-    RouterManager.pushTrustRequirements();
-  }
-
-  private openBrowsingHistory(): void {
-    RouterManager.pushBrowsingHistory();
-  }
-
-  private openMetaverse(): void {
-    RouterManager.pushMetaverse();
-  }
-
-  private openAppearance(): void {
-    RouterManager.pushAppearance();
-  }
-
-  private openPreferences(): void {
-    RouterManager.pushPreferences();
-  }
-
-  private openAbout(): void {
-    RouterManager.pushAbout();
-  }
-
   private showPendingToast(title: string): void {
     ToastService.show(`${title}待接入`);
   }
@@ -1025,7 +1000,7 @@ export struct ProfilePage {
       Text(value)
         .fontSize(18)
         .fontWeight(FontWeight.Bold)
-        .fontColor(AppSettingsService.getInstance().getPrimaryColor())
+        .fontColor($r('app.color.primary'))
       Text(label)
         .fontSize(11)
         .fontColor($r('app.color.on_surface_secondary'))
@@ -1076,7 +1051,7 @@ export struct ProfilePage {
         iconColor: '#43A047',
         title: '信任要求',
         showDivider: true,
-        onClick: () => { this.openTrustRequirements(); }
+        onClick: () => { this.showPendingToast('信任要求'); }
       })
       if (this.canShowInviteLinks()) {
         this.OptionItem({
@@ -1094,7 +1069,7 @@ export struct ProfilePage {
         iconColor: '#8E24AA',
         title: '浏览历史',
         showDivider: true,
-        onClick: () => { this.openBrowsingHistory(); }
+        onClick: () => { this.showPendingToast('浏览历史'); }
       })
       this.OptionItem({
         iconSymbol: $r('sys.symbol.archivebox'),
@@ -1102,7 +1077,7 @@ export struct ProfilePage {
         iconColor: '#F4511E',
         title: '元宇宙',
         showDivider: false,
-        onClick: () => { this.openMetaverse(); }
+        onClick: () => { this.showPendingToast('元宇宙'); }
       })
     }
     .width('100%')
@@ -1127,7 +1102,7 @@ export struct ProfilePage {
         iconColor: '#00897B',
         title: '外观设置',
         showDivider: true,
-        onClick: () => { this.openAppearance(); }
+        onClick: () => { this.showPendingToast('外观设置'); }
       })
       this.OptionItem({
         iconSymbol: $r('sys.symbol.wifi'),
@@ -1143,7 +1118,7 @@ export struct ProfilePage {
         iconColor: '#5E35B1',
         title: '功能设置',
         showDivider: true,
-        onClick: () => { this.openPreferences(); }
+        onClick: () => { this.showPendingToast('功能设置'); }
       })
       this.OptionItem({
         iconSymbol: $r('sys.symbol.archivebox'),
@@ -1157,9 +1132,9 @@ export struct ProfilePage {
         iconSymbol: $r('sys.symbol.info_circle'),
         iconBgColor: '#E8EAF6',
         iconColor: '#3949AB',
-        title: '关于 HarmonyDo',
+        title: '关于 FluxDO',
         showDivider: false,
-        onClick: () => { this.openAbout(); }
+        onClick: () => { this.showPendingToast('关于 FluxDO'); }
       })
     }
     .width('100%')
@@ -1214,7 +1189,7 @@ export struct ProfilePage {
       }
       .width('100%')
       .height(52)
-      .backgroundColor(AppSettingsService.getInstance().getPrimaryColor())
+      .backgroundColor($r('app.color.primary'))
       .borderRadius(16)
       .onClick(() => {
         RouterManager.pushLogin();

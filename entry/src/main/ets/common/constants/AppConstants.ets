@@ -35,17 +35,7 @@ export class AppConstants {
   static readonly SMALL_AVATAR_SIZE: number = 40;
 
   /** 应用名 */
-  static readonly APP_NAME: string = 'HarmonyDo';
-
-  /** 应用版本 */
-  static readonly APP_VERSION: string = '1.0.0';
-
-  /** 当前仓库 */
-  static readonly REPOSITORY_URL: string = 'https://github.com/Amaz1ny/HarmonyDo';
-  static readonly REPOSITORY_ISSUES_URL: string = 'https://github.com/Amaz1ny/HarmonyDo/issues';
-  static readonly REPOSITORY_RELEASES_URL: string = 'https://github.com/Amaz1ny/HarmonyDo/releases';
-  static readonly REPOSITORY_RELEASE_API_URL: string = 'https://api.github.com/repos/Amaz1ny/HarmonyDo/releases/latest';
-  static readonly REPOSITORY_LICENSE_URL: string = 'https://github.com/Amaz1ny/HarmonyDo/blob/main/LICENSE';
+  static readonly APP_NAME: string = 'HarmonyDO';
 
   /** User-Agent */
   static readonly USER_AGENT: string =

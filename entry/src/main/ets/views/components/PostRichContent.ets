@@ -7,7 +7,6 @@ import { ToastService } from '../../common/utils/ToastService';
 import { TimeUtils } from '../../common/utils/TimeUtils';
 import { AppConstants } from '../../common/constants/AppConstants';
 import { ApiClient } from '../../services/network/ApiClient';
-import { AppSettingsService } from '../../services/storage/AppSettingsService';
 import { LinkCount, MentionedUser, Poll, PollOption, Post } from '../../models/Post';
 import { SmartAvatar } from './SmartAvatar';
 import { ExpandedMenuOptions, SelectionMenu } from '@kit.ArkUI';
@@ -2520,15 +2519,15 @@ export struct PostRichContent {
   }
 
   private getBodyFontSize(): number {
-    return AppSettingsService.getInstance().scaleContentFont(this.dense ? 13 : 14);
+    return this.dense ? 13 : 14;
   }
 
   private getBodyLineHeight(): number {
-    return AppSettingsService.getInstance().scaleContentLineHeight(this.dense ? 20 : 21);
+    return this.dense ? 20 : 21;
   }
 
   private getBodySupFontSize(): number {
-    return AppSettingsService.getInstance().scaleContentFont(this.dense ? 11 : 12);
+    return this.dense ? 11 : 12;
   }
 
   private getBaseTextColor(): Resource {
@@ -2641,30 +2640,9 @@ export struct PostRichContent {
     const tokens: RichSpanToken[] = tokenizeInline(html);
     let out: string = '';
     for (let i = 0; i < tokens.length; i++) {
-      out = `${out}${this.getDisplayTokenText(tokens[i])}`;
+      out = `${out}${tokens[i].text}`;
     }
     return out;
-  }
-
-  private shouldApplyReadingSpacing(): boolean {
-    return !this.enableSelectionQuote && !this.enableCopyQuoteSelection;
-  }
-
-  private getDisplayTokenText(token: RichSpanToken): string {
-    if (token.code || token.type === RichSpanTokenType.ClickCount || token.type === RichSpanTokenType.InlineMath) {
-      return token.text;
-    }
-    if (!this.shouldApplyReadingSpacing()) {
-      return token.text;
-    }
-    return AppSettingsService.getInstance().applyReadingSpacing(token.text);
-  }
-
-  private getTextFontFamily(isCode: boolean = false): string {
-    if (isCode) {
-      return 'monospace';
-    }
-    return AppSettingsService.getInstance().getResolvedFontFamily();
   }
 
   private syncSelectionText(displayText: string, selectionStart: number, selectionEnd: number, sourceHtml: string): void {
@@ -3010,31 +2988,22 @@ export struct PostRichContent {
   }
 
   private getHeadingFontSize(level: number): number {
-    let base: number = 16;
     switch (level) {
       case 1:
-        base = 20;
-        break;
+        return 20;
       case 2:
-        base = 18;
-        break;
+        return 18;
       case 3:
-        base = 16;
-        break;
+        return 16;
       case 4:
-        base = 15;
-        break;
+        return 15;
       case 5:
-        base = 14;
-        break;
+        return 14;
       case 6:
-        base = 13;
-        break;
+        return 13;
       default:
-        base = 16;
-        break;
+        return 16;
     }
-    return AppSettingsService.getInstance().scaleContentFont(base);
   }
 
   private getCodeLangLabel(language: string): string {
@@ -3173,7 +3142,7 @@ export struct PostRichContent {
               }
             })
         } else if (t.type === RichSpanTokenType.Mention) {
-          Span(this.getDisplayTokenText(t))
+          Span(t.text)
             .fontColor($r('app.color.primary'))
             .fontWeight(FontWeight.Bold)
             .onClick(() => {
@@ -3192,7 +3161,7 @@ export struct PostRichContent {
               .fontSize(this.getHeadingFontSize(level) - 2)
           }
         } else if (t.type === RichSpanTokenType.FootnoteRef) {
-          Span(this.getDisplayTokenText(t))
+          Span(t.text)
             .fontColor($r('app.color.primary'))
             .fontSize(Math.max(10, this.getHeadingFontSize(level) - 5))
             .fontWeight(FontWeight.Bold)
@@ -3200,7 +3169,7 @@ export struct PostRichContent {
               this.openFootnote(t.metaId, t.text);
             })
         } else if (t.type === RichSpanTokenType.InlineSpoiler) {
-          Span(this.isInlineSpoilerRevealed(t.key) ? this.getDisplayTokenText(t) : '[剧透]')
+          Span(this.isInlineSpoilerRevealed(t.key) ? t.text : '[剧透]')
             .fontColor(this.isInlineSpoilerRevealed(t.key) ? $r('app.color.on_surface') : $r('app.color.on_surface_secondary'))
             .fontWeight(FontWeight.Bold)
             .onClick(() => {
@@ -3215,21 +3184,21 @@ export struct PostRichContent {
         } else if (t.type === RichSpanTokenType.ClickCount) {
           this.ClickCountInline(t.text, this.getHeadingFontSize(level))
         } else if (t.href !== null && (t.href as string).length > 0) {
-          Span(this.getDisplayTokenText(t))
+          Span(t.text)
             .fontColor($r('app.color.primary'))
             .onClick(() => {
               this.onOpenLink(t.href as string);
             })
             .fontWeight(FontWeight.Bold)
             .fontStyle(t.italic ? FontStyle.Italic : FontStyle.Normal)
-            .fontFamily(this.getTextFontFamily(t.code))
+            .fontFamily(t.code ? 'monospace' : '')
         } else {
-          Span(this.getDisplayTokenText(t))
+          Span(t.text)
             .fontColor($r('app.color.on_surface'))
             .decoration({ type: t.strike ? TextDecorationType.LineThrough : (t.underline ? TextDecorationType.Underline : TextDecorationType.None) })
             .fontWeight(FontWeight.Bold)
             .fontStyle(t.italic ? FontStyle.Italic : FontStyle.Normal)
-            .fontFamily(this.getTextFontFamily(t.code))
+            .fontFamily(t.code ? 'monospace' : '')
         }
       }, (t: RichSpanToken) => t.key)
     }
@@ -3486,7 +3455,7 @@ export struct PostRichContent {
               }
             })
         } else if (t.type === RichSpanTokenType.Mention) {
-          Span(this.getDisplayTokenText(t))
+          Span(t.text)
             .fontColor($r('app.color.primary'))
             .fontWeight(FontWeight.Medium)
             .onClick(() => {
@@ -3506,7 +3475,7 @@ export struct PostRichContent {
               .fontSize(this.getBodyFontSize() - 1)
           }
         } else if (t.type === RichSpanTokenType.FootnoteRef) {
-          Span(this.getDisplayTokenText(t))
+          Span(t.text)
             .fontColor($r('app.color.primary'))
             .fontSize(this.getBodySupFontSize())
             .fontWeight(FontWeight.Bold)
@@ -3514,7 +3483,7 @@ export struct PostRichContent {
               this.openFootnote(t.metaId, t.text);
             })
         } else if (t.type === RichSpanTokenType.InlineSpoiler) {
-          Span(this.isInlineSpoilerRevealed(t.key) ? this.getDisplayTokenText(t) : '[剧透]')
+          Span(this.isInlineSpoilerRevealed(t.key) ? t.text : '[剧透]')
             .fontColor(this.isInlineSpoilerRevealed(t.key) ? this.getBaseTextColor() : $r('app.color.on_surface_secondary'))
             .fontWeight(FontWeight.Medium)
             .onClick(() => {
@@ -3529,22 +3498,22 @@ export struct PostRichContent {
         } else if (t.type === RichSpanTokenType.ClickCount) {
           this.ClickCountInline(t.text, this.getBodyFontSize())
         } else if (t.href !== null && (t.href as string).length > 0) {
-          Span(this.getDisplayTokenText(t))
+          Span(t.text)
             .fontColor($r('app.color.primary'))
             .onClick(() => {
               this.onOpenLink(t.href as string);
             })
             .fontWeight(t.bold ? FontWeight.Bold : FontWeight.Normal)
             .fontStyle(t.italic ? FontStyle.Italic : FontStyle.Normal)
-            .fontFamily(this.getTextFontFamily(t.code))
+            .fontFamily(t.code ? 'monospace' : '')
             .fontSize((t.sup || t.sub) ? this.getBodySupFontSize() : this.getBodyFontSize())
         } else {
-          Span(this.getDisplayTokenText(t))
+          Span(t.text)
             .fontColor(t.code ? '#E06C75' : this.getBaseTextColor())
             .decoration({ type: t.strike ? TextDecorationType.LineThrough : (t.underline ? TextDecorationType.Underline : TextDecorationType.None) })
             .fontWeight(t.bold ? FontWeight.Bold : FontWeight.Normal)
             .fontStyle(t.italic ? FontStyle.Italic : FontStyle.Normal)
-            .fontFamily(this.getTextFontFamily(t.code))
+            .fontFamily(t.code ? 'monospace' : '')
             .fontSize(t.code ? (this.getBodyFontSize() - 1) : ((t.sup || t.sub) ? this.getBodySupFontSize() : this.getBodyFontSize()))
             .backgroundColor(t.code ? '#1A000000' : Color.Transparent)
         }

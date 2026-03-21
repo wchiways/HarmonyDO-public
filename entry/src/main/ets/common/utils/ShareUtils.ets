@@ -1,5 +1,4 @@
 import { AppConstants } from '../constants/AppConstants';
-import { AppSettingsService } from '../../services/storage/AppSettingsService';
 
 /**
  * 分享链接工具类
@@ -21,8 +20,5 @@ export class ShareUtils {
     const sep: string = base.indexOf('?') >= 0 ? '&' : '?';
     return `${base}${sep}u=${encodeURIComponent(username.trim())}`;
   }
-
-  static buildConfiguredShareUrl(path: string): string {
-    return AppSettingsService.getInstance().buildConfiguredShareUrl(path);
-  }
 }
+

@@ -479,8 +479,7 @@ export struct UserProfilePage {
     }
     const url: string = UrlUtils.resolveUrl(link.url);
     if (url.length > 0) {
-      ExternalLinkService.openPreferred(url).catch(() => {
-      });
+      ExternalLinkService.openInBrowser(url);
     }
   }
 
@@ -543,8 +542,7 @@ export struct UserProfilePage {
       : '网站';
     this.closeUserInfoSheet();
     setTimeout(() => {
-      ExternalLinkService.openPreferred(websiteUrl, websiteTitle).catch(() => {
-      });
+      RouterManager.pushWebView(websiteUrl, websiteTitle);
     }, 180);
   }
 
@@ -1817,7 +1815,7 @@ export struct UserProfilePage {
   }
 
   private getUserShareUrl(): string {
-    return ShareUtils.buildConfiguredShareUrl(`/u/${this.getTargetUsername()}`);
+    return ShareUtils.buildShareUrl(`/u/${this.getTargetUsername()}`);
   }
 
   private async shareUser(): Promise<void> {
@@ -2621,10 +2619,9 @@ export struct UserProfilePage {
             PostRichContent({
               cookedHtml: this.getProfileBioCookedHtml(),
               blockGapVp: 6,
-                onOpenLink: (url: string) => {
-                  ExternalLinkService.openPreferred(url).catch(() => {
-                  });
-                },
+              onOpenLink: (url: string) => {
+                ExternalLinkService.openInBrowser(url);
+              },
               onOpenImagePreview: (urls: string[], initialIndex: number) => {
                 RouterManager.pushImagePreview(urls, initialIndex);
               }

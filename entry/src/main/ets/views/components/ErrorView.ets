@@ -1,5 +1,3 @@
-import { AppSettingsService } from '../../services/storage/AppSettingsService';
-
 /**
  * 错误视图组件 — 100% 复刻安卓版 ErrorView
  *
@@ -55,7 +53,7 @@ export struct ErrorView {
                 .fontColor(Color.White)
             }
           }
-          .backgroundColor(AppSettingsService.getInstance().getPrimaryColor())
+          .backgroundColor($r('app.color.primary'))
           .borderRadius(20)
           .height(40)
           .padding({ left: 20, right: 20 })

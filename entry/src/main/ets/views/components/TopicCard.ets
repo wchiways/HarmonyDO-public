@@ -2,7 +2,6 @@ import { Topic, Tag } from '../../models/Topic';
 import { Category } from '../../models/Category';
 import { TimeUtils } from '../../common/utils/TimeUtils';
 import { UrlUtils } from '../../common/utils/UrlUtils';
-import { AppSettingsService } from '../../services/storage/AppSettingsService';
 import { SmartAvatar } from './SmartAvatar';
 import { TagBadge } from './TopicBadges';
 
@@ -20,7 +19,6 @@ export struct TopicCard {
   @Param category: Category | null = null;
   @Param opAvatarUrl: string = '';
   @Param isHighlighted: boolean = false;
-  @Param enableLongPress: boolean = true;
   @Event onCardClick: (topic: Topic) => void = () => {};
   @Event onCardLongPress: (topic: Topic) => void = () => {};
 
@@ -72,7 +70,7 @@ export struct TopicCard {
               Circle()
                 .width(8)
                 .height(8)
-                .fill(AppSettingsService.getInstance().getPrimaryColor())
+                .fill($r('app.color.primary'))
                 .margin({ left: 6, top: 5 })
             }
           }
@@ -86,7 +84,7 @@ export struct TopicCard {
               Text(`${this.topic.unread}`)
                 .fontSize(10)
                 .fontWeight(FontWeight.Bold)
-                .fontColor(AppSettingsService.getInstance().getPrimaryColor())
+                .fontColor($r('app.color.primary'))
             }
             .padding({ left: 8, right: 8, top: 3, bottom: 3 })
             .backgroundColor($r('app.color.badge_background_light'))
@@ -199,9 +197,7 @@ export struct TopicCard {
           }),
         LongPressGesture({ repeat: false, duration: 400 })
           .onAction(() => {
-            if (this.enableLongPress) {
-              this.onCardLongPress(this.topic);
-            }
+            this.onCardLongPress(this.topic);
           })
       )
     )
@@ -298,7 +294,6 @@ export struct CompactTopicCard {
   @Param topic: Topic = new Topic();
   @Param category: Category | null = null;
   @Param isHighlighted: boolean = false;
-  @Param enableLongPress: boolean = true;
   @Event onCardClick: (topic: Topic) => void = () => {};
   @Event onCardLongPress: (topic: Topic) => void = () => {};
 
@@ -307,7 +302,7 @@ export struct CompactTopicCard {
       // 置顶图标
       SymbolGlyph($r('sys.symbol.pin'))
         .fontSize(14)
-        .fontColor([AppSettingsService.getInstance().getPrimaryColor()])
+        .fontColor([$r('app.color.primary')])
         .margin({ right: 8 })
 
       // 分类图标：logo → lock → dot（不再做 sys.symbol 近似映射，避免与安卓不一致）
@@ -369,7 +364,7 @@ export struct CompactTopicCard {
           Text(`${this.topic.unread}`)
             .fontSize(9)
             .fontWeight(FontWeight.Bold)
-            .fontColor(AppSettingsService.getInstance().getPrimaryColor())
+            .fontColor($r('app.color.primary'))
         }
         .padding({ left: 6, right: 6, top: 2, bottom: 2 })
         .backgroundColor($r('app.color.badge_background_light'))
@@ -403,9 +398,7 @@ export struct CompactTopicCard {
           }),
         LongPressGesture({ repeat: false, duration: 400 })
           .onAction(() => {
-            if (this.enableLongPress) {
-              this.onCardLongPress(this.topic);
-            }
+            this.onCardLongPress(this.topic);
           })
       )
     )

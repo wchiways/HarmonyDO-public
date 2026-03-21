@@ -1700,7 +1700,7 @@ export struct TopicDetailPage {
   }
 
   private getTopicShareUrl(): string {
-    return ShareUtils.buildConfiguredShareUrl(this.getTopicSharePath());
+    return ShareUtils.buildShareUrl(this.getTopicSharePath());
   }
 
   private async shareTopic(): Promise<void> {
@@ -1776,8 +1776,7 @@ export struct TopicDetailPage {
       }
     }
 
-    ExternalLinkService.openPreferred(full).catch(() => {
-    });
+    ExternalLinkService.openInBrowser(full);
   }
 
   private openImagePreview(urls: string[], initialIndex: number): void {
@@ -3095,7 +3094,7 @@ export struct TopicDetailPage {
 
   private getPostShareUrl(post: Post): string {
     const postNumber: number = post.postNumber > 0 ? post.postNumber : 1;
-    return ShareUtils.buildConfiguredShareUrl(this.getTopicSharePath(postNumber));
+    return ShareUtils.buildShareUrl(this.getTopicSharePath(postNumber), '', true);
   }
 
   private getPostAvatarUrl(post: Post, size: number): string {

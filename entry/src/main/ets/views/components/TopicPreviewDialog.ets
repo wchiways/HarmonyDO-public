@@ -532,7 +532,7 @@ export struct TopicPreviewDialog {
 
   private getTopicShareUrl(): string {
     const slug: string = this.topic.slug.trim().length > 0 ? this.topic.slug.trim() : 'topic';
-    return ShareUtils.buildConfiguredShareUrl(`/t/${slug}/${this.topic.id}`);
+    return ShareUtils.buildShareUrl(`/t/${slug}/${this.topic.id}`);
   }
 
   private handlePreviewLinkClick(url: string): void {
@@ -590,8 +590,7 @@ export struct TopicPreviewDialog {
     }
 
     this.onClose();
-    ExternalLinkService.openPreferred(full).catch(() => {
-    });
+    ExternalLinkService.openInBrowser(full);
   }
 
   private openPreviewImage(urls: string[], initialIndex: number): void {
