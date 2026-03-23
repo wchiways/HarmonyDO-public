@@ -225,7 +225,7 @@ export struct NotificationQuickPanel {
           .width(32)
           .height(4)
           .borderRadius(2)
-          .backgroundColor('#D4D8DF')
+          .backgroundColor($r('app.color.divider'))
       }
       .width('100%')
       .padding({ top: 10, bottom: 6 })
@@ -429,7 +429,7 @@ export struct NotificationQuickPanel {
       Blank()
         .width('100%')
         .height(1)
-        .backgroundColor('#EEF1F5')
+        .backgroundColor($r('app.color.divider_light'))
         .margin({ left: 62 })
     }
     .width('100%')

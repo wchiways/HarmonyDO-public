@@ -6,6 +6,7 @@ import { ClipboardService } from '../../common/utils/ClipboardService';
 import { ToastService } from '../../common/utils/ToastService';
 import { TimeUtils } from '../../common/utils/TimeUtils';
 import { AppConstants } from '../../common/constants/AppConstants';
+import { WindowManager } from '../../common/utils/WindowManager';
 import { ApiClient } from '../../services/network/ApiClient';
 import { LinkCount, MentionedUser, Poll, PollOption, Post } from '../../models/Post';
 import { SmartAvatar } from './SmartAvatar';
@@ -3278,7 +3279,7 @@ export struct PostRichContent {
                   .padding({ left: 8, right: 8, top: 12, bottom: 12 })
               }
               .width(this.getCodeLineNumberWidthVp(text))
-              .backgroundColor('#FAFAFA')
+              .backgroundColor($r('app.color.surface_variant'))
 
               Blank()
                 .width(0.5)
@@ -3317,7 +3318,7 @@ export struct PostRichContent {
                 .padding({ left: 8, right: 8, top: 12, bottom: 12 })
             }
             .width(this.getCodeLineNumberWidthVp(text))
-            .backgroundColor('#FAFAFA')
+            .backgroundColor($r('app.color.surface_variant'))
 
             Blank()
               .width(0.5)
@@ -4050,6 +4051,10 @@ struct RichMathBlock {
     this.isLoaded = false;
   }
 
+  private getMathTextHex(): string {
+    return WindowManager.isDarkMode() ? '#E0E0E0' : '#1A1A1A';
+  }
+
   private getMathHeight(): number {
     const text: string = this.latex !== undefined && this.latex !== null ? this.latex : '';
     if (text.indexOf('\n') >= 0 || text.indexOf('\\begin') >= 0 || text.length > 120) {
@@ -4063,6 +4068,8 @@ struct RichMathBlock {
 
   private buildMathHtml(): string {
     const safeLatex: string = escapeHtmlText(this.latex);
+    const textColor: string = this.getMathTextHex();
+    const colorScheme: string = WindowManager.isDarkMode() ? 'dark' : 'light';
     return `<!DOCTYPE html>
 <html>
 <head>
@@ -4076,7 +4083,8 @@ struct RichMathBlock {
       margin: 0;
       padding: 0;
       background: transparent;
-      color: #111827;
+      color: ${textColor};
+      color-scheme: ${colorScheme};
       overflow-x: auto;
       overflow-y: hidden;
       font-family: -apple-system, BlinkMacSystemFont, sans-serif;
@@ -4093,6 +4101,9 @@ struct RichMathBlock {
       white-space: nowrap;
       font-size: 18px;
       line-height: 1.6;
+    }
+    #formula, .katex, .katex-display {
+      color: ${textColor};
     }
   </style>
 </head>

@@ -991,7 +991,7 @@ export struct ProfilePage {
     Blank()
       .width(1)
       .height(20)
-      .backgroundColor(ThemeManager.hexWithAlpha('#A0A6B1', 0.35))
+      .backgroundColor($r('app.color.divider'))
   }
 
   @Builder
@@ -1165,7 +1165,7 @@ export struct ProfilePage {
       }
       .width('100%')
       .height(48)
-      .backgroundColor(ThemeManager.hexWithAlpha('#D32F2F', 0.08))
+      .backgroundColor(this.getDangerActionBackground())
       .borderRadius(24)
       .onClick(() => {
         this.logout().catch((err: Object) => {
@@ -1219,6 +1219,19 @@ export struct ProfilePage {
     return count.toString();
   }
 
+  private getDangerActionBackground(): string {
+    return WindowManager.isDarkMode()
+      ? ThemeManager.hexWithAlpha('#EF5350', 0.18)
+      : ThemeManager.hexWithAlpha('#D32F2F', 0.08);
+  }
+
+  private getOptionIconBackground(iconBgColor: string, iconColor: string): string {
+    if (!WindowManager.isDarkMode()) {
+      return iconBgColor;
+    }
+    return ThemeManager.hexWithAlpha(iconColor, 0.18);
+  }
+
   @Builder
   private OptionItem(params: ProfileOptionItem) {
     Column() {
@@ -1231,7 +1244,7 @@ export struct ProfilePage {
         .width(36)
         .height(36)
         .borderRadius(10)
-        .backgroundColor(params.iconBgColor)
+        .backgroundColor(this.getOptionIconBackground(params.iconBgColor, params.iconColor))
         .justifyContent(FlexAlign.Center)
         .alignItems(HorizontalAlign.Center)
 

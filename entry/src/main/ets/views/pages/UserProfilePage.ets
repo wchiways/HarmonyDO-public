@@ -122,8 +122,7 @@ export struct UserProfilePage {
 
   aboutToAppear(): void {
     // 进入他人主页：开启沉浸式（内容延伸到状态栏下），并让系统栏与头图/列表风格一致
-    WindowManager.setWindowLayoutFullScreen(true);
-    WindowManager.setSystemBarStyle('#00000000', '#FFFFFF', '#FFFFFF', '#000000');
+    WindowManager.applyProfileHeaderSystemChrome();
     this.attachAuthStateListener();
     this.bootstrapPage().catch((err: Object) => {
       hilog.error(0x0000, TAG, 'Bootstrap user profile failed: %{public}s', JSON.stringify(err));
@@ -132,7 +131,7 @@ export struct UserProfilePage {
 
   aboutToDisappear(): void {
     // 恢复全局默认系统栏样式（沉浸式保持开启，由 EntryAbility 统一控制）
-    WindowManager.setSystemBarStyle('#00000000', '#FFFFFF', '#000000', '#000000');
+    WindowManager.applyDefaultSystemChrome();
     this.clearScrollSyncTimer();
     this.detachAuthStateListener();
   }
@@ -2586,7 +2585,7 @@ export struct UserProfilePage {
       .width('100%')
       .height(1)
       .margin({ left: 16, right: 16 })
-      .backgroundColor('#EEF1F5')
+      .backgroundColor($r('app.color.divider_light'))
 
       Scroll() {
         Column() {

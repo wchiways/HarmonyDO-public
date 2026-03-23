@@ -1,4 +1,4 @@
-import { AbilityConstant, ConfigurationConstant, UIAbility, Want, common } from '@kit.AbilityKit';
+import { AbilityConstant, Configuration, ConfigurationConstant, UIAbility, Want, common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { PreferencesUtil } from '../services/storage/PreferencesUtil';
@@ -53,6 +53,11 @@ export default class EntryAbility extends UIAbility {
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageDestroy');
   }
 
+  onConfigurationUpdate(newConfig: Configuration): void {
+    hilog.info(DOMAIN, 'testTag', 'Color mode updated: %{public}s', JSON.stringify(newConfig.colorMode));
+    WindowManager.refreshCurrentSystemChrome(newConfig.colorMode);
+  }
+
   onForeground(): void {
     // Ability has brought to foreground
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onForeground');
@@ -79,10 +84,7 @@ export default class EntryAbility extends UIAbility {
         const w: window.Window = stage.getMainWindowSync();
 
         WindowManager.init(w);
-        WindowManager.setWindowBackgroundColor('#FFFFFF');
-        // 全局开启沉浸式：内容延伸到状态栏下（全面屏），并设置默认系统栏样式（浅色背景+深色图标）
-        WindowManager.setWindowLayoutFullScreen(true);
-        WindowManager.setSystemBarStyle('#00000000', '#FFFFFF', '#000000', '#000000');
+        WindowManager.applyDefaultSystemChrome(this.context.config.colorMode);
         return;
       } catch (err) {
         hilog.error(DOMAIN, 'testTag', 'Init main window sync failed. Cause: %{public}s', JSON.stringify(err));
@@ -93,10 +95,7 @@ export default class EntryAbility extends UIAbility {
       stage.getMainWindow()
         .then((w: window.Window) => {
           WindowManager.init(w);
-          WindowManager.setWindowBackgroundColor('#FFFFFF');
-          // 全局开启沉浸式：内容延伸到状态栏下（全面屏），并设置默认系统栏样式（浅色背景+深色图标）
-          WindowManager.setWindowLayoutFullScreen(true);
-          WindowManager.setSystemBarStyle('#00000000', '#FFFFFF', '#000000', '#000000');
+          WindowManager.applyDefaultSystemChrome(this.context.config.colorMode);
         })
         .catch((err: Object) => {
           hilog.error(DOMAIN, 'testTag', 'Init main window failed. Cause: %{public}s', JSON.stringify(err));

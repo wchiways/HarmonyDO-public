@@ -1,10 +1,20 @@
+import { ConfigurationConstant } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
+import { AppContext } from './AppContext';
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'WindowManager';
+const TRANSPARENT_COLOR: string = '#00000000';
+const LIGHT_WINDOW_BACKGROUND: string = '#FFFFFF';
+const DARK_WINDOW_BACKGROUND: string = '#121212';
+const LIGHT_NAVIGATION_SURFACE: string = '#FFFFFF';
+const DARK_NAVIGATION_SURFACE: string = '#1E1E1E';
+const LIGHT_SYSTEM_CONTENT: string = '#000000';
+const DARK_SYSTEM_CONTENT: string = '#FFFFFF';
 
 type SystemBarName = 'status' | 'navigation';
+type SystemChromeStyle = 'default' | 'profile_header';
 
 interface UIContextLike {
   px2vp: (value: number) => number;
@@ -32,10 +42,67 @@ interface WindowSystemBarLike {
 
 export class WindowManager {
   private static mainWindow: window.Window | null = null;
+  private static currentChromeStyle: SystemChromeStyle = 'default';
 
   static init(mainWindow: window.Window): void {
     WindowManager.mainWindow = mainWindow;
+  }
 
+  private static getCurrentColorMode(): number {
+    try {
+      const ctx = AppContext.getUIAbilityContext();
+      if (ctx !== null && ctx.config !== undefined) {
+        const colorMode: number | undefined = ctx.config.colorMode;
+        if (colorMode !== undefined) {
+          return colorMode;
+        }
+      }
+    } catch (_) {
+    }
+    return ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET;
+  }
+
+  static isDarkMode(colorMode?: number): boolean {
+    const resolvedColorMode: number = colorMode === undefined ? WindowManager.getCurrentColorMode() : colorMode;
+    return resolvedColorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
+  }
+
+  private static getWindowBackgroundHex(colorMode?: number): string {
+    return WindowManager.isDarkMode(colorMode) ? DARK_WINDOW_BACKGROUND : LIGHT_WINDOW_BACKGROUND;
+  }
+
+  private static getNavigationSurfaceHex(colorMode?: number): string {
+    return WindowManager.isDarkMode(colorMode) ? DARK_NAVIGATION_SURFACE : LIGHT_NAVIGATION_SURFACE;
+  }
+
+  private static getSystemContentHex(colorMode?: number): string {
+    return WindowManager.isDarkMode(colorMode) ? DARK_SYSTEM_CONTENT : LIGHT_SYSTEM_CONTENT;
+  }
+
+  static applyDefaultSystemChrome(colorMode?: number): void {
+    WindowManager.currentChromeStyle = 'default';
+    WindowManager.setWindowLayoutFullScreen(true);
+    WindowManager.setWindowBackgroundColor(WindowManager.getWindowBackgroundHex(colorMode));
+    const navigationColor: string = WindowManager.getNavigationSurfaceHex(colorMode);
+    const contentColor: string = WindowManager.getSystemContentHex(colorMode);
+    WindowManager.setSystemBarStyle(TRANSPARENT_COLOR, navigationColor, contentColor, contentColor);
+  }
+
+  static applyProfileHeaderSystemChrome(colorMode?: number): void {
+    WindowManager.currentChromeStyle = 'profile_header';
+    WindowManager.setWindowLayoutFullScreen(true);
+    WindowManager.setWindowBackgroundColor(WindowManager.getWindowBackgroundHex(colorMode));
+    const navigationColor: string = WindowManager.getNavigationSurfaceHex(colorMode);
+    const navigationContentColor: string = WindowManager.getSystemContentHex(colorMode);
+    WindowManager.setSystemBarStyle(TRANSPARENT_COLOR, navigationColor, DARK_SYSTEM_CONTENT, navigationContentColor);
+  }
+
+  static refreshCurrentSystemChrome(colorMode?: number): void {
+    if (WindowManager.currentChromeStyle === 'profile_header') {
+      WindowManager.applyProfileHeaderSystemChrome(colorMode);
+      return;
+    }
+    WindowManager.applyDefaultSystemChrome(colorMode);
   }
 
   private static pxToVp(px: number): number {

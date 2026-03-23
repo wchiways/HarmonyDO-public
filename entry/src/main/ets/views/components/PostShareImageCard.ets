@@ -21,6 +21,7 @@ class ShareImageTheme {
   contentBg: string = '#FFFFFF';
   contentText: string = '#111111';
   linkText: string = '#666666';
+  avatarBg: string = '#E8EAF0';
 
   constructor() {
   }
@@ -38,6 +39,7 @@ function resolveTheme(themeIndex: number): ShareImageTheme {
       t.contentBg = '#FFFFFF';
       t.contentText = '#1F2328';
       t.linkText = '#6B7280';
+      t.avatarBg = '#E8EAF0';
       return t;
     // 纯白
     case 1:
@@ -47,6 +49,7 @@ function resolveTheme(themeIndex: number): ShareImageTheme {
       t.contentBg = '#F4F6F8';
       t.contentText = '#1F2328';
       t.linkText = '#6B7280';
+      t.avatarBg = '#E8EAF0';
       return t;
     // 深色
     case 2:
@@ -56,6 +59,7 @@ function resolveTheme(themeIndex: number): ShareImageTheme {
       t.contentBg = '#2C2C2E';
       t.contentText = '#FFFFFF';
       t.linkText = '#B0B3B8';
+      t.avatarBg = '#34343A';
       return t;
     // 纯黑
     case 3:
@@ -65,6 +69,7 @@ function resolveTheme(themeIndex: number): ShareImageTheme {
       t.contentBg = '#1A1A1A';
       t.contentText = '#FFFFFF';
       t.linkText = '#C6C6C6';
+      t.avatarBg = '#2A2A2A';
       return t;
     // 蓝调
     case 4:
@@ -74,6 +79,7 @@ function resolveTheme(themeIndex: number): ShareImageTheme {
       t.contentBg = '#FFFFFF';
       t.contentText = '#1F2328';
       t.linkText = '#4B5563';
+      t.avatarBg = '#E8EAF0';
       return t;
     // 绿野
     case 5:
@@ -83,6 +89,7 @@ function resolveTheme(themeIndex: number): ShareImageTheme {
       t.contentBg = '#FFFFFF';
       t.contentText = '#1F2328';
       t.linkText = '#4B5563';
+      t.avatarBg = '#E8EAF0';
       return t;
     default:
       return resolveTheme(0);
@@ -146,7 +153,9 @@ export function postShareImageBuilder(params: PostShareImageParams, themeIndex: 
         avatarUrl: params.avatarUrl,
         avatarSize: 36,
         fallbackText: params.username,
-        bgColor: '#E8EAF0'
+        bgColor: resolveTheme(themeIndex).avatarBg,
+        fallbackFontColor: resolveTheme(themeIndex).secondaryText,
+        useNeutralPlaceholderResource: false
       })
 
       Column() {

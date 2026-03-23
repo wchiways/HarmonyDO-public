@@ -38,6 +38,7 @@ import { AppContext } from '../../common/utils/AppContext';
 import { PostShareImageParams, postShareImageBuilder } from '../components/PostShareImageCard';
 import { PreferencesUtil } from '../../services/storage/PreferencesUtil';
 import { MessageBusMessage, MessageBusService } from '../../services/messagebus/MessageBusService';
+import { HoldingHandService, HoldingHandState } from '../../services/device/HoldingHandService';
 import {
   FLOATING_TAB_BAR_HEIGHT_VP,
   FLOATING_TAB_BAR_RADIUS_VP,
@@ -66,6 +67,7 @@ const SHARE_IMAGE_THEME_NAMES: string[] = ['经典', '纯白', '深色', '纯黑
 const SHARE_IMAGE_THEME_COLORS: string[] = ['#F3EBDD', '#FFFFFF', '#1C1C1E', '#000000', '#D9E8FF', '#DDF3E2'];
 const SHARE_IMAGE_THEME_INDICES: number[] = [0, 1, 2, 3, 4, 5];
 const SHARE_IMAGE_SNAPSHOT_DELAY_MS: number = 240;
+const FAB_BOTTOM_MARGIN_VP: number = 16;
 
 /**
  * 话题详情页面 — 100% 复刻安卓版
@@ -124,6 +126,9 @@ export struct TopicDetailPage {
   @Local topicBookmarkReminderAt: Date | null = null;
   @Local isBookmarkSheetVisible: boolean = false;
   @Local isBookmarkMutating: boolean = false;
+  @Local isPostBookmarkSheetVisible: boolean = false;
+  @Local editingPostBookmarkPost: Post | null = null;
+  @Local postBookmarkMutatingPostId: number = 0;
   @Local expandedRepliesPostNumber: number = 0;
   @Local expandedRepliesLoading: boolean = false;
   @Local expandedRepliesErrorMessage: string = '';
@@ -197,6 +202,7 @@ export struct TopicDetailPage {
   @Local exportLoading: boolean = false;
   @Local exportErrorMessage: string = '';
   @Local exportProgressText: string = '';
+  @Local holdingHandStatus: HoldingHandState = HoldingHandState.UNKNOWN_STATUS;
 
   private timeTickTimerId: number = -1;
   private shareImageRequestId: number = 0;
@@ -215,6 +221,7 @@ export struct TopicDetailPage {
   private topicChannelCallback: ((message: MessageBusMessage) => void) | null = null;
   private reactionsChannelCallback: ((message: MessageBusMessage) => void) | null = null;
   private authStateListener: (() => void) | null = null;
+  private holdingHandListener: ((status: HoldingHandState) => void) | null = null;
   private topicChannelAttached: boolean = false;
   private pendingTopicCreatedPostIds: number[] = [];
   private realtimeFetchQueue: number[] = [];
@@ -226,6 +233,7 @@ export struct TopicDetailPage {
     this.targetPostNumber = this.initialPostNumber;
     this.startTimeTick();
     this.attachAuthStateListener();
+    this.attachHoldingHandListener();
     this.initAuthState();
     this.attachTopicChannel();
 
@@ -252,6 +260,7 @@ export struct TopicDetailPage {
     this.clearHighlightTimer();
     this.detachTopicChannel();
     this.detachAuthStateListener();
+    this.detachHoldingHandListener();
   }
 
   private attachAuthStateListener(): void {
@@ -272,6 +281,42 @@ export struct TopicDetailPage {
     }
     AuthService.getInstance().removeListener(this.authStateListener);
     this.authStateListener = null;
+  }
+
+  private attachHoldingHandListener(): void {
+    if (this.holdingHandListener !== null) {
+      return;
+    }
+    const service: HoldingHandService = HoldingHandService.getInstance();
+    this.holdingHandStatus = service.getStatus();
+    this.holdingHandListener = (status: HoldingHandState) => {
+      this.holdingHandStatus = status;
+    };
+    service.addListener(this.holdingHandListener);
+  }
+
+  private detachHoldingHandListener(): void {
+    if (this.holdingHandListener === null) {
+      return;
+    }
+    HoldingHandService.getInstance().removeListener(this.holdingHandListener);
+    this.holdingHandListener = null;
+  }
+
+  private isReplyFabLeftAligned(): boolean {
+    return this.holdingHandStatus === HoldingHandState.LEFT_HAND_HELD;
+  }
+
+  private getReplyFabPositionX(): string | number {
+    return this.isReplyFabLeftAligned() ? 16 : '100%';
+  }
+
+  private getReplyFabTranslateX(): number {
+    return this.isReplyFabLeftAligned() ? 0 : -72;
+  }
+
+  private getReplyFabTranslateY(): number {
+    return -(56 + FAB_BOTTOM_MARGIN_VP + this.getDetailBottomBarReservedBottomVp());
   }
 
   @Monitor('isShareImageSheetVisible')
@@ -368,24 +413,32 @@ export struct TopicDetailPage {
     return value.toString().trim();
   }
 
+  private parseBookmarkReminderValue(value: Object | null | undefined): Date | null {
+    if (value === undefined || value === null) {
+      return null;
+    }
+    const text: string = value.toString().trim();
+    if (text.length === 0) {
+      return null;
+    }
+    return TimeUtils.parseUtcTime(text);
+  }
+
   private applyTopicBookmarkStateFromJson(json: Record<string, Object>): void {
     let nextBookmarked: boolean = false;
-    const bookmarkedVal = json['bookmarked'];
-    if (bookmarkedVal !== undefined && bookmarkedVal !== null) {
-      nextBookmarked = bookmarkedVal as boolean;
-    }
-
     let nextBookmarkId: number = this.parseBookmarkIdValue(json['bookmark_id']);
     let nextBookmarkName: string = this.parseBookmarkNameValue(json['_bookmark_name']);
-    let nextBookmarkReminderAt: Date | null = null;
-
-    const bookmarkReminderVal = json['_bookmark_reminder_at'];
-    if (bookmarkReminderVal !== undefined && bookmarkReminderVal !== null) {
-      nextBookmarkReminderAt = TimeUtils.parseUtcTime(bookmarkReminderVal.toString());
+    let nextBookmarkReminderAt: Date | null = this.parseBookmarkReminderValue(json['_bookmark_reminder_at']);
+    const topLevelBookmarkableType: string = this.parseBookmarkNameValue(json['bookmarkable_type']);
+    if (nextBookmarkId > 0 && topLevelBookmarkableType !== 'Post') {
+      nextBookmarked = true;
     }
 
+    let hasBookmarksArray: boolean = false;
+    let foundTopicBookmark: boolean = false;
     const bookmarksVal = json['bookmarks'];
     if (bookmarksVal !== undefined && bookmarksVal !== null && Array.isArray(bookmarksVal)) {
+      hasBookmarksArray = true;
       const bookmarksArray: Object[] = bookmarksVal as Object[];
       for (let i = 0; i < bookmarksArray.length; i++) {
         const item: Object = bookmarksArray[i];
@@ -397,18 +450,16 @@ export struct TopicDetailPage {
         if (typeText !== 'Topic') {
           continue;
         }
+        foundTopicBookmark = true;
         nextBookmarked = true;
         nextBookmarkId = this.parseBookmarkIdValue(bookmarkObj['id']);
         nextBookmarkName = this.parseBookmarkNameValue(bookmarkObj['name']);
-        const reminderVal = bookmarkObj['reminder_at'];
-        nextBookmarkReminderAt = reminderVal !== undefined && reminderVal !== null
-          ? TimeUtils.parseUtcTime(reminderVal.toString())
-          : null;
+        nextBookmarkReminderAt = this.parseBookmarkReminderValue(bookmarkObj['reminder_at']);
         break;
       }
     }
 
-    if (!nextBookmarked) {
+    if ((hasBookmarksArray && !foundTopicBookmark) || !nextBookmarked) {
       nextBookmarkId = 0;
       nextBookmarkName = '';
       nextBookmarkReminderAt = null;
@@ -418,6 +469,43 @@ export struct TopicDetailPage {
     this.topicBookmarkId = nextBookmarkId;
     this.topicBookmarkName = nextBookmarkName;
     this.topicBookmarkReminderAt = nextBookmarkReminderAt;
+  }
+
+  private applyPostBookmarkStatesFromJson(json: Record<string, Object>, posts: Post[]): void {
+    if (posts.length === 0) {
+      return;
+    }
+    const bookmarksVal = json['bookmarks'];
+    if (bookmarksVal === undefined || bookmarksVal === null || !Array.isArray(bookmarksVal)) {
+      return;
+    }
+    const postIndexMap: Map<number, number> = new Map();
+    for (let i = 0; i < posts.length; i++) {
+      postIndexMap.set(posts[i].id, i);
+    }
+    const bookmarksArray: Object[] = bookmarksVal as Object[];
+    for (let i = 0; i < bookmarksArray.length; i++) {
+      const item: Object = bookmarksArray[i];
+      if (item === undefined || item === null || typeof item !== 'object') {
+        continue;
+      }
+      const bookmarkObj: Record<string, Object> = item as Record<string, Object>;
+      const typeText: string = this.parseBookmarkNameValue(bookmarkObj['bookmarkable_type']);
+      if (typeText !== 'Post') {
+        continue;
+      }
+      const bookmarkableId: number = this.parseBookmarkIdValue(bookmarkObj['bookmarkable_id']);
+      if (bookmarkableId <= 0 || !postIndexMap.has(bookmarkableId)) {
+        continue;
+      }
+      const post: Post = posts[postIndexMap.get(bookmarkableId) as number];
+      const bookmarkId: number = this.parseBookmarkIdValue(bookmarkObj['id']);
+      const bookmarkName: string = this.parseBookmarkNameValue(bookmarkObj['name']);
+      post.bookmarked = true;
+      post.bookmarkId = bookmarkId > 0 ? bookmarkId : null;
+      post.bookmarkName = bookmarkName.length > 0 ? bookmarkName : null;
+      post.bookmarkReminderAt = this.parseBookmarkReminderValue(bookmarkObj['reminder_at']);
+    }
   }
 
   private openTopicBookmarkSheet(): void {
@@ -431,6 +519,18 @@ export struct TopicDetailPage {
     this.isBookmarkSheetVisible = false;
   }
 
+  private openPostBookmarkSheet(post: Post): void {
+    if (post.bookmarkId === null || (post.bookmarkId as number) <= 0) {
+      return;
+    }
+    this.editingPostBookmarkPost = post;
+    this.isPostBookmarkSheetVisible = true;
+  }
+
+  private closePostBookmarkSheet(): void {
+    this.isPostBookmarkSheetVisible = false;
+  }
+
   private clearTopicBookmarkState(): void {
     this.isBookmarked = false;
     this.topicBookmarkId = 0;
@@ -442,6 +542,125 @@ export struct TopicDetailPage {
     this.isBookmarked = this.topicBookmarkId > 0;
     this.topicBookmarkName = name !== null ? name : '';
     this.topicBookmarkReminderAt = clearReminderAt ? null : reminderAt;
+  }
+
+  private isPostBookmarkMutating(postId: number): boolean {
+    return postId > 0 && this.postBookmarkMutatingPostId === postId;
+  }
+
+  private getPostBookmarkActionLabel(post: Post): string {
+    if (this.isPostBookmarkMutating(post.id)) {
+      return '处理中...';
+    }
+    if (post.bookmarked && post.bookmarkId !== null && (post.bookmarkId as number) > 0) {
+      return '编辑书签';
+    }
+    return '添加书签';
+  }
+
+  private updatePostBookmarkState(
+    postId: number,
+    bookmarked: boolean,
+    bookmarkId: number | null,
+    bookmarkName: string | null,
+    bookmarkReminderAt: Date | null
+  ): void {
+    if (postId <= 0) {
+      return;
+    }
+    const applyUpdate = (source: Post[]): Post[] => {
+      if (source.length === 0) {
+        return source;
+      }
+      let changed: boolean = false;
+      const next: Post[] = [];
+      for (let i = 0; i < source.length; i++) {
+        const current: Post = source[i];
+        if (current.id === postId) {
+          current.bookmarked = bookmarked;
+          current.bookmarkId = bookmarkId;
+          current.bookmarkName = bookmarkName;
+          current.bookmarkReminderAt = bookmarkReminderAt;
+          changed = true;
+        }
+        next.push(current);
+      }
+      return changed ? next : source;
+    };
+
+    this.posts = applyUpdate(this.posts);
+    this.expandedReplies = applyUpdate(this.expandedReplies);
+
+    if (this.editingPostBookmarkPost !== null && (this.editingPostBookmarkPost as Post).id === postId) {
+      const editingPost: Post = this.editingPostBookmarkPost as Post;
+      editingPost.bookmarked = bookmarked;
+      editingPost.bookmarkId = bookmarkId;
+      editingPost.bookmarkName = bookmarkName;
+      editingPost.bookmarkReminderAt = bookmarkReminderAt;
+      this.editingPostBookmarkPost = editingPost;
+    }
+  }
+
+  private clearPostBookmarkState(postId: number): void {
+    this.updatePostBookmarkState(postId, false, null, null, null);
+  }
+
+  private applyPostBookmarkUpdate(
+    postId: number,
+    name: string | null,
+    reminderAt: Date | null,
+    clearReminderAt: boolean
+  ): void {
+    const targetPost: Post | null = this.getLoadedPostById(postId);
+    const bookmarkId: number | null = targetPost !== null ? targetPost.bookmarkId : null;
+    this.updatePostBookmarkState(
+      postId,
+      bookmarkId !== null && (bookmarkId as number) > 0,
+      bookmarkId,
+      name,
+      clearReminderAt ? null : reminderAt
+    );
+  }
+
+  private async handlePostBookmarkAction(post: Post): Promise<void> {
+    if (this.isPostBookmarkMutating(post.id)) {
+      return;
+    }
+    const loggedIn: boolean = await this.ensureLoggedInForAction();
+    if (!loggedIn) {
+      ToastService.showLoginRequired();
+      return;
+    }
+    if (post.bookmarked) {
+      if (post.bookmarkId === null || (post.bookmarkId as number) <= 0) {
+        ToastService.show('书签信息同步中，请稍后重试');
+        return;
+      }
+      this.openPostBookmarkSheet(post);
+      return;
+    }
+    if (post.id <= 0) {
+      ToastService.show('无效的帖子');
+      return;
+    }
+
+    this.postBookmarkMutatingPostId = post.id;
+    try {
+      const bookmarkId: number = await ApiClient.getInstance().bookmarkPost(post.id);
+      this.updatePostBookmarkState(post.id, true, bookmarkId, null, null);
+      ToastService.show('已添加书签');
+      const targetPost: Post | null = this.getLoadedPostById(post.id);
+      if (targetPost !== null) {
+        this.openPostBookmarkSheet(targetPost);
+      }
+    } catch (err) {
+      const message: string = ApiClient.formatError(err).replace('Error: ', '').trim();
+      ToastService.show(message.length > 0 && message !== 'Unknown error' ? message : '添加书签失败');
+    } finally {
+      if (this.postBookmarkMutatingPostId === post.id) {
+        this.postBookmarkMutatingPostId = 0;
+      }
+    }
   }
 
   private getTopicBookmarkMenuLabel(): string {
@@ -751,6 +970,10 @@ export struct TopicDetailPage {
     this.topicBookmarkId = 0;
     this.topicBookmarkName = '';
     this.topicBookmarkReminderAt = null;
+    this.isBookmarkSheetVisible = false;
+    this.isPostBookmarkSheetVisible = false;
+    this.editingPostBookmarkPost = null;
+    this.postBookmarkMutatingPostId = 0;
 
     this.replyCount = 0;
     this.postsCount = 0;
@@ -909,6 +1132,7 @@ export struct TopicDetailPage {
         return ia - ib;
       });
 
+      this.applyPostBookmarkStatesFromJson(json, parsedPosts);
       this.acceptedAnswerPostNumber = this.resolveAcceptedAnswerPostNumber(json, parsedPosts);
       this.hasAcceptedAnswer = this.resolveHasAcceptedAnswer(json, parsedPosts, this.acceptedAnswerPostNumber);
       this.posts = parsedPosts;
@@ -1626,6 +1850,14 @@ export struct TopicDetailPage {
     return -1;
   }
 
+  private getLoadedPostById(postId: number): Post | null {
+    const idx: number = this.findPostIndexById(postId);
+    if (idx < 0 || idx >= this.posts.length) {
+      return null;
+    }
+    return this.posts[idx];
+  }
+
   private findPostIndexByPostNumber(postNumber: number): number {
     for (let i = 0; i < this.posts.length; i++) {
       if (this.posts[i].postNumber === postNumber) {
@@ -2183,11 +2415,27 @@ export struct TopicDetailPage {
   }
 
   private getCategoryColor(category: Category | null): string {
-    if (category === null) return '#999999';
+    if (category === null) return this.getDefaultCategoryColor();
     const c: Category = category as Category;
-    if (c.color.length === 0) return '#999999';
+    if (c.color.length === 0) return this.getDefaultCategoryColor();
     if (c.color.startsWith('#')) return c.color;
     return `#${c.color}`;
+  }
+
+  private getDefaultCategoryColor(): string {
+    return WindowManager.isDarkMode() ? '#777777' : '#999999';
+  }
+
+  private getMenuShadowColor(): string {
+    return WindowManager.isDarkMode() ? '#00000000' : '#22000000';
+  }
+
+  private getProgressCapsuleShadowColor(): string {
+    return WindowManager.isDarkMode() ? '#00000000' : '#33000000';
+  }
+
+  private getFloatingActionShadowColor(): string {
+    return WindowManager.isDarkMode() ? '#00000000' : '#55000000';
   }
 
   private getTopicTimeText(): string {
@@ -2208,10 +2456,9 @@ export struct TopicDetailPage {
   }
 
   private getDetailBottomBarReservedBottomVp(): number {
+    const v: number = Math.max(0, Math.min(1, this.bottomBarVisibility));
     return this.getBottomSafeHeight()
-      + 20
-      + this.bottomBarVisibility
-      * (FLOATING_TAB_BAR_HEIGHT_VP + FLOATING_TAB_BAR_MARGIN_BOTTOM_VP + FLOATING_TAB_BAR_CONTENT_EXTRA_PADDING_VP);
+      + v * (FLOATING_TAB_BAR_HEIGHT_VP + FLOATING_TAB_BAR_MARGIN_BOTTOM_VP + FLOATING_TAB_BAR_CONTENT_EXTRA_PADDING_VP);
   }
 
   private getProgressBottomOffset(): number {
@@ -2257,7 +2504,7 @@ export struct TopicDetailPage {
     if (colorHex.length === 8) {
       return `#${alphaHex}${colorHex.substring(2)}`;
     }
-    return `#${alphaHex}999999`;
+    return `#${alphaHex}${this.getDefaultCategoryColor().substring(1)}`;
   }
 
   @Builder
@@ -2487,11 +2734,19 @@ export struct TopicDetailPage {
                       this.LoadMoreFooter()
                     }
                   }
+
+                  // 与首页一致：仅在列表末尾预留悬浮胶囊避让空间，
+                  // 让正文可以继续滚动到胶囊后方，而不是整段内容被底部 padding 提前挡住。
+                  ListItem() {
+                    Row() {
+                    }
+                    .width('100%')
+                    .height(this.getDetailBottomBarReservedBottomVp())
+                  }
                 }
                 .width('100%')
                 .layoutWeight(1)
                 .backgroundColor($r('app.color.surface'))
-                .padding({ bottom: this.getDetailBottomBarReservedBottomVp() })
                 .onReachStart(() => {
                   this.scrollOffset = 0;
                   this.showTitle = false;
@@ -2569,7 +2824,7 @@ export struct TopicDetailPage {
           .padding({ left: 14, right: 14, top: 6, bottom: 6 })
           .backgroundColor($r('app.color.surface'))
           .borderRadius(20)
-          .shadow({ radius: 4, color: '#33000000', offsetX: 0, offsetY: 2 })
+          .shadow({ radius: 4, color: this.getProgressCapsuleShadowColor(), offsetX: 0, offsetY: 2 })
           .position({ x: '50%', y: '100%' })
           .translate({ x: '-50%', y: this.getProgressTranslateY() })
           .onClick(() => {
@@ -2704,15 +2959,30 @@ export struct TopicDetailPage {
           Button() {
             SymbolGlyph($r('sys.symbol.message'))
               .fontSize(22)
-              .fontColor([Color.White])
+              .fontColor([$r('app.color.primary')])
           }
           .width(56)
           .height(56)
           .borderRadius(16)
-          .backgroundColor($r('app.color.primary'))
-          .shadow({ radius: 8, color: '#55000000', offsetX: 0, offsetY: 4 })
-          .position({ x: '100%', y: '100%' })
-          .translate({ x: -72, y: -72 })
+          .backgroundColor(Color.Transparent)
+          .backgroundEffect(
+            {
+              radius: 64,
+              saturation: 2.2,
+              brightness: 1.08,
+              color: $r('app.color.fab_glass_tint'),
+              adaptiveColor: AdaptiveColor.DEFAULT,
+              policy: BlurStyleActivePolicy.ALWAYS_ACTIVE,
+              inactiveColor: $r('app.color.fab_glass_tint')
+            },
+            { disableSystemAdaptation: true }
+          )
+          .border({ width: 0.5, color: $r('app.color.fab_glass_stroke') })
+          .clip(true)
+          .shadow({ radius: 18, color: $r('app.color.tab_glass_shadow'), offsetX: 0, offsetY: 10 })
+          .position({ x: this.getReplyFabPositionX(), y: '100%' })
+          .translate({ x: this.getReplyFabTranslateX(), y: this.getReplyFabTranslateY() })
+          .animation({ duration: 220, curve: Curve.EaseOut })
           .onClick(() => {
             this.openReplySheet();
           })
@@ -2778,6 +3048,21 @@ export struct TopicDetailPage {
           dragBar: false,
           showClose: false,
           backgroundColor: $r('app.color.surface')
+        })
+
+        Column() {
+        }
+        .width(0)
+        .height(0)
+        .bindSheet($$this.isPostBookmarkSheetVisible, this.PostBookmarkSheetBuilder, {
+          height: SheetSize.MEDIUM,
+          dragBar: false,
+          showClose: false,
+          backgroundColor: $r('app.color.surface'),
+          onDisappear: () => {
+            this.isPostBookmarkSheetVisible = false;
+            this.editingPostBookmarkPost = null;
+          }
         })
 
         Column() {
@@ -3268,7 +3553,7 @@ export struct TopicDetailPage {
     .width(180)
     .backgroundColor($r('app.color.search_bar_background'))
     .borderRadius(12)
-    .shadow({ radius: 10, color: '#22000000', offsetX: 0, offsetY: 6 })
+    .shadow({ radius: 10, color: this.getMenuShadowColor(), offsetX: 0, offsetY: 6 })
   }
 
   private getPostShareUrl(post: Post): string {
@@ -3692,7 +3977,7 @@ export struct TopicDetailPage {
     .width(200)
     .backgroundColor($r('app.color.search_bar_background'))
     .borderRadius(12)
-    .shadow({ radius: 10, color: '#22000000', offsetX: 0, offsetY: 6 })
+    .shadow({ radius: 10, color: this.getMenuShadowColor(), offsetX: 0, offsetY: 6 })
   }
 
   @Builder
@@ -3742,6 +4027,30 @@ export struct TopicDetailPage {
         .onChange((selected: boolean) => {
           if (selected) {
             this.openPostQuoteReply(post);
+          }
+        })
+
+        MenuItem() {
+          Row() {
+            SymbolGlyph(post.bookmarked ? $r('sys.symbol.bookmark_fill') : $r('sys.symbol.bookmark'))
+              .fontSize(16)
+              .fontColor([post.bookmarked ? $r('app.color.primary') : $r('app.color.on_surface')])
+              .margin({ right: 10 })
+            Text(this.getPostBookmarkActionLabel(post))
+              .fontSize(14)
+              .fontColor(post.bookmarked ? $r('app.color.primary') : $r('app.color.on_surface'))
+          }
+          .width('100%')
+          .padding({ left: 12, right: 12 })
+          .alignItems(VerticalAlign.Center)
+        }
+        .selected(false)
+        .selectIcon(false)
+        .height(44)
+        .onChange((selected: boolean) => {
+          if (selected) {
+            this.handlePostBookmarkAction(post).catch((_: Object) => {
+            });
           }
         })
       }
@@ -3818,7 +4127,7 @@ export struct TopicDetailPage {
     .width(200)
     .backgroundColor($r('app.color.search_bar_background'))
     .borderRadius(12)
-    .shadow({ radius: 10, color: '#22000000', offsetX: 0, offsetY: 6 })
+    .shadow({ radius: 10, color: this.getMenuShadowColor(), offsetX: 0, offsetY: 6 })
   }
 
   @Builder
@@ -4280,6 +4589,35 @@ export struct TopicDetailPage {
   }
 
   @Builder
+  PostBookmarkSheetBuilder() {
+    if (this.editingPostBookmarkPost !== null
+      && (this.editingPostBookmarkPost as Post).bookmarkId !== null
+      && ((this.editingPostBookmarkPost as Post).bookmarkId as number) > 0) {
+      BookmarkEditSheet({
+        bookmarkId: (this.editingPostBookmarkPost as Post).bookmarkId as number,
+        initialName: (this.editingPostBookmarkPost as Post).bookmarkName !== null
+          ? (this.editingPostBookmarkPost as Post).bookmarkName as string
+          : '',
+        initialReminderAt: (this.editingPostBookmarkPost as Post).bookmarkReminderAt,
+        onDismiss: () => {
+          this.closePostBookmarkSheet();
+        },
+        onUpdated: (name: string | null, reminderAt: Date | null, clearReminderAt: boolean) => {
+          this.applyPostBookmarkUpdate(
+            (this.editingPostBookmarkPost as Post).id,
+            name,
+            reminderAt,
+            clearReminderAt
+          );
+        },
+        onDeleted: () => {
+          this.clearPostBookmarkState((this.editingPostBookmarkPost as Post).id);
+        }
+      })
+    }
+  }
+
+  @Builder
   ReplySheetBuilder() {
     ReplyComposerSheet({
       topicId: this.topicId,
@@ -4727,6 +5065,29 @@ export struct TopicDetailPage {
           }
 
           Blank().layoutWeight(1)
+
+          if (!this.isGuestMode) {
+            Column() {
+              SymbolGlyph(post.bookmarked ? $r('sys.symbol.bookmark_fill') : $r('sys.symbol.bookmark'))
+                .fontSize(18)
+                .fontColor([post.bookmarked ? $r('app.color.primary') : $r('app.color.on_surface_secondary')])
+            }
+            .width(36)
+            .height(36)
+            .borderRadius(18)
+            .backgroundColor(post.bookmarked ? $r('app.color.badge_background_light') : $r('app.color.surface_variant'))
+            .border({
+              width: post.bookmarked ? 1 : 0,
+              color: $r('app.color.primary')
+            })
+            .justifyContent(FlexAlign.Center)
+            .alignItems(HorizontalAlign.Center)
+            .margin({ right: 10 })
+            .onClick(() => {
+              this.handlePostBookmarkAction(post).catch((_: Object) => {
+              });
+            })
+          }
 
           // 右侧：更多（游客态严格隐藏点赞，互动功能后续登录态再开放）
           Column() {

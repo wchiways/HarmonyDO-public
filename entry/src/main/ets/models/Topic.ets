@@ -141,6 +141,23 @@ export class Topic {
   constructor() {
   }
 
+  getBookmarkIdentityKey(): string {
+    if (this.bookmarkId !== null && (this.bookmarkId as number) > 0) {
+      return `bookmark:${(this.bookmarkId as number).toString()}`;
+    }
+    return `topic:${this.id.toString()}`;
+  }
+
+  getBookmarkTargetPostNumber(): number {
+    if (this.bookmarkedPostNumber !== null && (this.bookmarkedPostNumber as number) > 0) {
+      return this.bookmarkedPostNumber as number;
+    }
+    if (this.lastReadPostNumber > 0) {
+      return this.lastReadPostNumber;
+    }
+    return 1;
+  }
+
   /**
    * 从 JSON 解析 Topic
    */

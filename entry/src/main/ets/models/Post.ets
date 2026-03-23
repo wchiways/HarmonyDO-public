@@ -175,6 +175,8 @@ export class Post {
   replyToUser: ReplyToUser | null = null;
   bookmarked: boolean = false;
   bookmarkId: number | null = null;
+  bookmarkName: string | null = null;
+  bookmarkReminderAt: Date | null = null;
   read: boolean = false;
   canEdit: boolean = false;
   canDelete: boolean = false;
@@ -316,7 +318,24 @@ export class Post {
     post.bookmarked = bookmarkedVal !== undefined && bookmarkedVal !== null ? bookmarkedVal as boolean : false;
 
     const bookmarkIdVal = json['bookmark_id'];
-    post.bookmarkId = bookmarkIdVal !== undefined && bookmarkIdVal !== null ? bookmarkIdVal as number : null;
+    if (bookmarkIdVal !== undefined && bookmarkIdVal !== null) {
+      const parsedBookmarkId: number = Number(bookmarkIdVal.toString());
+      post.bookmarkId = !isNaN(parsedBookmarkId) && parsedBookmarkId > 0 ? parsedBookmarkId : null;
+    } else {
+      post.bookmarkId = null;
+    }
+
+    const bookmarkNameVal = json['bookmark_name'] !== undefined ? json['bookmark_name'] : json['_bookmark_name'];
+    post.bookmarkName = bookmarkNameVal !== undefined && bookmarkNameVal !== null
+      ? bookmarkNameVal.toString().trim()
+      : null;
+
+    const bookmarkReminderVal = json['bookmark_reminder_at'] !== undefined
+      ? json['bookmark_reminder_at']
+      : json['_bookmark_reminder_at'];
+    post.bookmarkReminderAt = bookmarkReminderVal !== undefined && bookmarkReminderVal !== null
+      ? TimeUtils.parseUtcTime(bookmarkReminderVal.toString())
+      : null;
 
     const readVal = json['read'];
     post.read = readVal !== undefined && readVal !== null ? readVal as boolean : false;

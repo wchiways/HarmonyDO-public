@@ -64,8 +64,7 @@ export struct MyBadgesPage {
   private username: string = '';
 
   aboutToAppear(): void {
-    WindowManager.setWindowLayoutFullScreen(true);
-    WindowManager.setSystemBarStyle('#00000000', '#FFFFFF', '#000000', '#000000');
+    WindowManager.applyDefaultSystemChrome();
     if (this.userBadges.length === 0) {
       this.loadBadges(true).catch(() => {
       });
@@ -73,7 +72,7 @@ export struct MyBadgesPage {
   }
 
   aboutToDisappear(): void {
-    WindowManager.setSystemBarStyle('#00000000', '#FFFFFF', '#000000', '#000000');
+    WindowManager.applyDefaultSystemChrome();
   }
 
   private normalizeErrorMessage(err: Object): string {

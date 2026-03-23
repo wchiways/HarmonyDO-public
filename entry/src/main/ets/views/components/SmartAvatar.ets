@@ -17,6 +17,8 @@ export struct SmartAvatar {
   @Param avatarRadius: number = -1;
   @Param fallbackText: string = '';
   @Param bgColor: string = '';
+  @Param fallbackFontColor: string | Resource = $r('app.color.primary');
+  @Param useNeutralPlaceholderResource: boolean = true;
   @Local private failedUrl: string = '';
 
   private getRadius(): number {
@@ -30,6 +32,15 @@ export struct SmartAvatar {
     const path: string = q >= 0 ? raw.substring(0, q) : raw;
     if (path.endsWith('.gif')) return true;
     return false;
+  }
+
+  private isNeutralPlaceholderBg(): boolean {
+    const raw: string = this.bgColor !== undefined && this.bgColor !== null ? this.bgColor.trim().toUpperCase() : '';
+    return raw === '#E8EAF0';
+  }
+
+  private shouldUseNeutralPlaceholderResource(): boolean {
+    return this.useNeutralPlaceholderResource && this.isNeutralPlaceholderBg();
   }
 
   build() {
@@ -57,15 +68,37 @@ export struct SmartAvatar {
       }
     } else if (this.fallbackText.length > 0) {
       // Fallback：首字母大写 + 主色背景
-      Text(this.fallbackText.charAt(0).toUpperCase())
-        .width(this.avatarSize)
-        .height(this.avatarSize)
-        .borderRadius(this.getRadius())
-        .backgroundColor(this.bgColor.length > 0 ? this.bgColor : '#E0E7FF')
-        .textAlign(TextAlign.Center)
-        .fontSize(this.avatarSize * 0.45)
-        .fontWeight(FontWeight.Bold)
-        .fontColor($r('app.color.primary'))
+      if (this.bgColor.length > 0 && !this.shouldUseNeutralPlaceholderResource()) {
+        Text(this.fallbackText.charAt(0).toUpperCase())
+          .width(this.avatarSize)
+          .height(this.avatarSize)
+          .borderRadius(this.getRadius())
+          .backgroundColor(this.bgColor)
+          .textAlign(TextAlign.Center)
+          .fontSize(this.avatarSize * 0.45)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(this.fallbackFontColor)
+      } else if (this.bgColor.length > 0) {
+        Text(this.fallbackText.charAt(0).toUpperCase())
+          .width(this.avatarSize)
+          .height(this.avatarSize)
+          .borderRadius(this.getRadius())
+          .backgroundColor($r('app.color.avatar_placeholder'))
+          .textAlign(TextAlign.Center)
+          .fontSize(this.avatarSize * 0.45)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(this.fallbackFontColor)
+      } else {
+        Text(this.fallbackText.charAt(0).toUpperCase())
+          .width(this.avatarSize)
+          .height(this.avatarSize)
+          .borderRadius(this.getRadius())
+          .backgroundColor($r('app.color.badge_background_light'))
+          .textAlign(TextAlign.Center)
+          .fontSize(this.avatarSize * 0.45)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(this.fallbackFontColor)
+      }
     } else {
       // 默认占位：人像图标
       Column() {
@@ -76,7 +109,7 @@ export struct SmartAvatar {
       .width(this.avatarSize)
       .height(this.avatarSize)
       .borderRadius(this.getRadius())
-      .backgroundColor('#E8EAF0')
+      .backgroundColor($r('app.color.avatar_placeholder'))
       .justifyContent(FlexAlign.Center)
       .alignItems(HorizontalAlign.Center)
     }

@@ -28,8 +28,7 @@ export struct BadgeDetailPage {
   @Local heroImageFailed: boolean = false;
 
   aboutToAppear(): void {
-    WindowManager.setWindowLayoutFullScreen(true);
-    WindowManager.setSystemBarStyle('#00000000', '#FFFFFF', '#000000', '#000000');
+    WindowManager.applyDefaultSystemChrome();
     if (this.detail.userBadges.length === 0) {
       this.loadDetail(true).catch(() => {
       });
@@ -37,7 +36,7 @@ export struct BadgeDetailPage {
   }
 
   aboutToDisappear(): void {
-    WindowManager.setSystemBarStyle('#00000000', '#FFFFFF', '#000000', '#000000');
+    WindowManager.applyDefaultSystemChrome();
   }
 
   private normalizeErrorMessage(err: Object): string {

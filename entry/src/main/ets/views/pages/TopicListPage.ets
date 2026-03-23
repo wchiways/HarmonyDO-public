@@ -16,6 +16,7 @@ import { DEFAULT_AVAILABLE_TAGS, TagChip, TagSelectionSheet } from '../component
 import { WindowManager } from '../../common/utils/WindowManager';
 import { TopicTrackingService } from '../../services/messagebus/TopicTrackingService';
 import { TopicListPreferences } from '../../services/storage/TopicListPreferences';
+import { HoldingHandService, HoldingHandState } from '../../services/device/HoldingHandService';
 import {
   FLOATING_TAB_BAR_HEIGHT_VP,
   FLOATING_TAB_BAR_MARGIN_BOTTOM_VP,
@@ -28,6 +29,7 @@ const TAB_ROW_HEIGHT: number = 36;
 const SORT_BAR_HEIGHT: number = 44;
 const COLLAPSIBLE_HEIGHT: number = SEARCH_BAR_HEIGHT + SORT_BAR_HEIGHT;
 const BAR_VISIBILITY_EPS: number = 0.01;
+const FAB_BOTTOM_MARGIN_VP: number = 16;
 
 // 游客态“查看新话题”轮询：Discourse 站点通常会把匿名 MessageBus poll 拉长到 ~25s（anon_polling_interval）
 // 为了更“实时”的体验，这里额外用 /latest.json 做轻量轮询并做指数退避，避免触发 CF 频控时刷屏/卡死
@@ -94,16 +96,19 @@ export struct TopicListPage {
   @Local previewCategory: Category | null = null;
   @Local previewParentCategory: Category | null = null;
   @Local isTopicPreviewVisible: boolean = false;
+  @Local holdingHandStatus: HoldingHandState = HoldingHandState.UNKNOWN_STATUS;
 
   // 标签筛选
   @Local selectedTags: string[] = [];
   @Local draftSelectedTags: string[] = [];
   @Local availableTags: string[] = DEFAULT_AVAILABLE_TAGS;
   private authStateListener: (() => void) | null = null;
+  private holdingHandListener: ((status: HoldingHandState) => void) | null = null;
 
   aboutToAppear(): void {
     this.reportBarVisibility(true);
     this.attachAuthStateListener();
+    this.attachHoldingHandListener();
 
     // 避免切换页面/Tab 后重复全量 bootstrap（会重新拉取列表，导致 banner 延迟出现并“一口气跳很大”）
     if (this.hasBootstrapped) {
@@ -126,6 +131,7 @@ export struct TopicListPage {
     this.clearIncomingHighlightTimer();
     this.highlightedTopicIds = [];
     this.detachTrackingListener();
+    this.detachHoldingHandListener();
   }
 
   private onPageResume(): void {
@@ -169,6 +175,26 @@ export struct TopicListPage {
     }
     AuthService.getInstance().removeListener(this.authStateListener);
     this.authStateListener = null;
+  }
+
+  private attachHoldingHandListener(): void {
+    if (this.holdingHandListener !== null) {
+      return;
+    }
+    const service: HoldingHandService = HoldingHandService.getInstance();
+    this.holdingHandStatus = service.getStatus();
+    this.holdingHandListener = (status: HoldingHandState) => {
+      this.holdingHandStatus = status;
+    };
+    service.addListener(this.holdingHandListener);
+  }
+
+  private detachHoldingHandListener(): void {
+    if (this.holdingHandListener === null) {
+      return;
+    }
+    HoldingHandService.getInstance().removeListener(this.holdingHandListener);
+    this.holdingHandListener = null;
   }
 
   private async bootstrapPage(): Promise<void> {
@@ -451,10 +477,19 @@ export struct TopicListPage {
   }
 
   private getHomeFabTranslateY(visibility: number): number {
-    const v: number = this.clamp(visibility, 0, 1);
-    const bottomSafe: number = WindowManager.getSystemAvoidAreaBottomVp();
-    const avoidTabBar: number = (FLOATING_TAB_BAR_HEIGHT_VP + FLOATING_TAB_BAR_MARGIN_BOTTOM_VP) * v;
-    return -(72 + bottomSafe + avoidTabBar);
+    return -(56 + FAB_BOTTOM_MARGIN_VP + this.getFloatingTabBarReservedBottomForVisibilityVp(visibility));
+  }
+
+  private isHomeFabLeftAligned(): boolean {
+    return this.holdingHandStatus === HoldingHandState.LEFT_HAND_HELD;
+  }
+
+  private getHomeFabPositionX(): string | number {
+    return this.isHomeFabLeftAligned() ? 16 : '100%';
+  }
+
+  private getHomeFabTranslateX(): number {
+    return this.isHomeFabLeftAligned() ? 0 : -72;
   }
 
   private computeBarVisibility(): number {
@@ -989,11 +1024,25 @@ export struct TopicListPage {
     .width(56)
     .height(56)
     .borderRadius(28)
-    .backgroundColor($r('app.color.surface'))
-    .shadow({ radius: 10, color: '#22000000', offsetX: 0, offsetY: 6 })
-    .position({ x: '100%', y: '100%' })
-    // 避开底部 TabBar（随 barVisibility 收起/展开）+ 预留 16 margin
-    .translate({ x: -72, y: this.getHomeFabTranslateY(visibility) })
+    .backgroundColor(Color.Transparent)
+    .backgroundEffect(
+      {
+        radius: 64,
+        saturation: 2.2,
+        brightness: 1.08,
+        color: $r('app.color.fab_glass_tint'),
+        adaptiveColor: AdaptiveColor.DEFAULT,
+        policy: BlurStyleActivePolicy.ALWAYS_ACTIVE,
+        inactiveColor: $r('app.color.fab_glass_tint')
+      },
+      { disableSystemAdaptation: true }
+    )
+    .border({ width: 0.5, color: $r('app.color.fab_glass_stroke') })
+    .clip(true)
+    .shadow({ radius: 18, color: $r('app.color.tab_glass_shadow'), offsetX: 0, offsetY: 10 })
+    .position({ x: this.getHomeFabPositionX(), y: '100%' })
+    .translate({ x: this.getHomeFabTranslateX(), y: this.getHomeFabTranslateY(visibility) })
+    .animation({ duration: 220, curve: Curve.EaseOut })
     .onClick(() => {
       if (this.fabRefreshMode) {
         this.onRefreshFabClick();

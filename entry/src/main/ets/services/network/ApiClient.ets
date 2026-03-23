@@ -1407,6 +1407,34 @@ export class ApiClient {
     throw new Error('添加书签失败');
   }
 
+  async bookmarkPost(postId: number, name: string | null = null, reminderAt: Date | null = null): Promise<number> {
+    if (postId <= 0) {
+      throw new Error('无效的帖子ID');
+    }
+    if (AppConstants.USE_MOCK_DATA) {
+      return postId * 1000 + 1;
+    }
+    const form: Record<string, Object> = {};
+    form['bookmarkable_id'] = postId.toString();
+    form['bookmarkable_type'] = 'Post';
+    if (name !== null && name.trim().length > 0) {
+      form['name'] = name.trim();
+    }
+    if (reminderAt !== null) {
+      form['reminder_at'] = reminderAt.toISOString();
+    }
+    const rawText: string = await this.http.postFormText(ApiConstants.BOOKMARKS, form);
+    const json: Record<string, Object> = JSON.parse(rawText) as Record<string, Object>;
+    const idVal = json['id'];
+    if (idVal !== undefined && idVal !== null) {
+      const bookmarkId: number = Number(idVal.toString());
+      if (!isNaN(bookmarkId) && bookmarkId > 0) {
+        return bookmarkId;
+      }
+    }
+    throw new Error('添加书签失败');
+  }
+
   async updateBookmark(bookmarkId: number, name: string | null = null, reminderAt: Date | null = null): Promise<void> {
     if (AppConstants.USE_MOCK_DATA || bookmarkId <= 0) {
       return;

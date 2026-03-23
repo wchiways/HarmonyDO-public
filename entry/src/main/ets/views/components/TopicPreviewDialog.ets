@@ -69,6 +69,8 @@ export struct TopicPreviewDialog {
   @Param topic: Topic = new Topic();
   @Param category: Category | null = null;
   @Param parentCategory: Category | null = null;
+  @Param compactMode: boolean = false;
+  @Param showParticipants: boolean = true;
   @Param secondaryActionLabel: string = '';
   @Event onClose: () => void = () => {};
   @Event onOpen: (topic: Topic) => void = () => {};
@@ -113,7 +115,7 @@ export struct TopicPreviewDialog {
 
           this.ContentSection()
 
-          if (this.hasParticipants()) {
+          if (this.showParticipants && this.hasParticipants()) {
             this.ParticipantsSection()
           }
 
@@ -122,13 +124,18 @@ export struct TopicPreviewDialog {
       }
       .width('100%')
       .layoutWeight(1)
-      .padding({ left: 20, right: 20, top: 18, bottom: 18 })
+      .padding({
+        left: this.compactMode ? 18 : 20,
+        right: this.compactMode ? 18 : 20,
+        top: this.compactMode ? 14 : 18,
+        bottom: this.compactMode ? 12 : 18
+      })
 
       this.ActionBar()
     }
-    .width('92%')
-    .height('72%')
-    .constraintSize({ maxWidth: 560 })
+    .width(this.compactMode ? '88%' : '92%')
+    .height(this.compactMode ? '54%' : '72%')
+    .constraintSize({ maxWidth: this.compactMode ? 500 : 560 })
     .backgroundColor($r('app.color.surface'))
     .borderRadius(24)
     .clip(true)
@@ -158,10 +165,10 @@ export struct TopicPreviewDialog {
       }
       Text(this.topic.title)
         .layoutWeight(1)
-        .fontSize(22)
+        .fontSize(this.compactMode ? 20 : 22)
         .fontWeight(FontWeight.Bold)
         .fontColor($r('app.color.on_surface'))
-        .lineHeight(30)
+        .lineHeight(this.compactMode ? 28 : 30)
         .maxLines(4)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
     }
@@ -194,7 +201,7 @@ export struct TopicPreviewDialog {
       }
     }
     .width('100%')
-    .margin({ top: 14 })
+    .margin({ top: this.compactMode ? 12 : 14 })
     .alignItems(VerticalAlign.Center)
   }
 
@@ -232,7 +239,7 @@ export struct TopicPreviewDialog {
       }, (tag: Tag) => tag.name)
     }
     .width('100%')
-    .margin({ top: 14 })
+    .margin({ top: this.compactMode ? 12 : 14 })
   }
 
   @Builder
@@ -266,14 +273,14 @@ export struct TopicPreviewDialog {
         })
       }
       .width('100%')
-      .margin({ top: 16 })
+      .margin({ top: this.compactMode ? 12 : 16 })
     } else if (this.previewFallbackText.length > 0) {
       Text(this.previewFallbackText)
         .width('100%')
         .fontSize(14)
         .fontColor($r('app.color.on_surface'))
         .lineHeight(22)
-        .margin({ top: 16 })
+        .margin({ top: this.compactMode ? 12 : 16 })
     }
   }
 
@@ -301,7 +308,7 @@ export struct TopicPreviewDialog {
       .alignItems(VerticalAlign.Center)
     }
     .width('100%')
-    .margin({ top: 18 })
+    .margin({ top: this.compactMode ? 14 : 18 })
     .alignItems(VerticalAlign.Center)
   }
 
@@ -325,7 +332,7 @@ export struct TopicPreviewDialog {
       .margin({ top: 10 })
     }
     .width('100%')
-    .margin({ top: 18 })
+    .margin({ top: this.compactMode ? 14 : 18 })
   }
 
   @Builder
@@ -348,13 +355,16 @@ export struct TopicPreviewDialog {
   @Builder
   private ActionBar() {
     Row() {
-      Button('关闭')
-        .type(ButtonType.Capsule)
-        .fontSize(14)
+      Row() {
+        Text('关闭')
+          .fontSize(14)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.on_surface_secondary'))
+      }
         .height(42)
         .layoutWeight(1)
-        .backgroundColor($r('app.color.surface'))
-        .fontColor($r('app.color.on_surface_secondary'))
+        .justifyContent(FlexAlign.Start)
+        .alignItems(VerticalAlign.Center)
         .onClick(() => {
           this.onClose();
         })
@@ -404,7 +414,12 @@ export struct TopicPreviewDialog {
         })
     }
     .width('100%')
-    .padding({ left: 16, right: 16, top: 14, bottom: 14 })
+    .padding({
+      left: 16,
+      right: 16,
+      top: this.compactMode ? 10 : 14,
+      bottom: this.compactMode ? 10 : 14
+    })
     .backgroundColor($r('app.color.surface'))
     .border({
       width: { top: 1 },
@@ -485,6 +500,9 @@ export struct TopicPreviewDialog {
   }
 
   private hasParticipants(): boolean {
+    if (!this.showParticipants) {
+      return false;
+    }
     for (let i = 0; i < this.topic.posters.length && i < 5; i++) {
       if (this.topic.posters[i].user !== null) {
         return true;

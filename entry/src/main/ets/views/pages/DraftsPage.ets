@@ -496,7 +496,7 @@ export struct DraftsPage {
             .fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.error'))
             .padding({ left: 8, right: 8, top: 4, bottom: 4 })
-            .backgroundColor('#FDECEC')
+            .backgroundColor($r('app.color.error_background_soft'))
             .borderRadius(10)
             .margin({ left: 8 })
             .enabled(this.deletingDraftKey.length === 0 || this.deletingDraftKey === draft.draftKey)

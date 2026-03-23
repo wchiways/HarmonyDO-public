@@ -93,6 +93,38 @@
       "value": "#4DB8FF"
     },
     {
+      "name": "tab_selected_pill",
+      "value": "#334DB8FF"
+    },
+    {
+      "name": "tab_glass_mask",
+      "value": "#CC1E1E1E"
+    },
+    {
+      "name": "tab_glass_tint",
+      "value": "#662A2A2A"
+    },
+    {
+      "name": "fab_glass_tint",
+      "value": "#402A2A2A"
+    },
+    {
+      "name": "tab_glass_stroke",
+      "value": "#26FFFFFF"
+    },
+    {
+      "name": "fab_glass_stroke",
+      "value": "#1AFFFFFF"
+    },
+    {
+      "name": "tab_glass_shadow",
+      "value": "#44000000"
+    },
+    {
+      "name": "tab_glass_divider",
+      "value": "#1FFFFFFF"
+    },
+    {
       "name": "search_bar_background",
       "value": "#2C2C2C"
     },
@@ -145,6 +177,10 @@
       "value": "#2A2A2A"
     },
     {
+      "name": "input_border",
+      "value": "#3A404A"
+    },
+    {
       "name": "divider_light",
       "value": "#222222"
     },
@@ -179,6 +215,26 @@
     {
       "name": "badge_background_light",
       "value": "#2A3B4C"
+    },
+    {
+      "name": "error_background_soft",
+      "value": "#4A2328"
+    },
+    {
+      "name": "avatar_placeholder",
+      "value": "#2A313A"
+    },
+    {
+      "name": "tag_purple",
+      "value": "#C4A1FF"
+    },
+    {
+      "name": "seed_user_gradient_start",
+      "value": "#C77DFF"
+    },
+    {
+      "name": "seed_user_gradient_end",
+      "value": "#34D399"
     }
   ]
 }

@@ -8,6 +8,7 @@ import { TimeUtils } from '../../common/utils/TimeUtils';
 import { UrlUtils } from '../../common/utils/UrlUtils';
 import { RouterManager } from '../../common/utils/RouterManager';
 import { WindowManager } from '../../common/utils/WindowManager';
+import { ToastService } from '../../common/utils/ToastService';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorView } from '../components/ErrorView';
 import { TopicCard } from '../components/TopicCard';
@@ -33,6 +34,7 @@ export struct BookmarksPage {
 
   @Local isBookmarkSheetVisible: boolean = false;
   @Local editingTopic: Topic | null = null;
+  @Local isPreviewDeleting: boolean = false;
 
   private page: number = 0;
   private username: string = '';
@@ -96,27 +98,10 @@ export struct BookmarksPage {
       const targetPage: number = reset ? 0 : (this.page + 1);
       const response = await ApiClient.getInstance().getUserBookmarks(this.username, targetPage);
       if (reset) {
-        this.topics = response.topics;
+        this.topics = this.mergeBookmarkTopics([], response.topics);
         this.page = 0;
       } else {
-        const merged: Topic[] = [];
-        for (let i = 0; i < this.topics.length; i++) {
-          merged.push(this.topics[i]);
-        }
-        for (let i = 0; i < response.topics.length; i++) {
-          const item: Topic = response.topics[i];
-          let exists: boolean = false;
-          for (let j = 0; j < merged.length; j++) {
-            if (merged[j].id === item.id) {
-              exists = true;
-              break;
-            }
-          }
-          if (!exists) {
-            merged.push(item);
-          }
-        }
-        this.topics = merged;
+        this.topics = this.mergeBookmarkTopics(this.topics, response.topics);
         this.page = targetPage;
       }
       this.hasMore = response.moreTopicsUrl !== null && (response.moreTopicsUrl as string).trim().length > 0;
@@ -188,11 +173,71 @@ export struct BookmarksPage {
     return `提醒 ${TimeUtils.formatDetailTime(topic.bookmarkReminderAt)}`;
   }
 
+  private isPostBookmark(topic: Topic): boolean {
+    if (topic.bookmarkableType === null) {
+      return false;
+    }
+    return (topic.bookmarkableType as string).trim() === 'Post';
+  }
+
+  private getBookmarkTypeLabel(topic: Topic): string {
+    return this.isPostBookmark(topic) ? '楼层书签' : '话题书签';
+  }
+
+  private getBookmarkPostNumberLabel(topic: Topic): string {
+    if (!this.isPostBookmark(topic)) {
+      return '';
+    }
+    if (topic.bookmarkedPostNumber !== null && (topic.bookmarkedPostNumber as number) > 0) {
+      return `#${(topic.bookmarkedPostNumber as number).toString()} 楼`;
+    }
+    return '已书签楼层';
+  }
+
+  private getBookmarkTargetLabel(topic: Topic): string {
+    if (!this.isPostBookmark(topic)) {
+      return '';
+    }
+    if (topic.bookmarkedPostNumber !== null && (topic.bookmarkedPostNumber as number) > 0) {
+      return '打开后将直达该回复';
+    }
+    return '打开后将直达已书签回复';
+  }
+
+  private mergeBookmarkTopics(preferred: Topic[], extra: Topic[]): Topic[] {
+    const merged: Topic[] = [];
+    const seen: Map<string, boolean> = new Map();
+    for (let i = 0; i < preferred.length; i++) {
+      const topic: Topic = preferred[i];
+      const identityKey: string = topic.getBookmarkIdentityKey();
+      if (seen.has(identityKey)) {
+        continue;
+      }
+      seen.set(identityKey, true);
+      merged.push(topic);
+    }
+    for (let i = 0; i < extra.length; i++) {
+      const topic: Topic = extra[i];
+      const identityKey: string = topic.getBookmarkIdentityKey();
+      if (seen.has(identityKey)) {
+        continue;
+      }
+      seen.set(identityKey, true);
+      merged.push(topic);
+    }
+    return merged;
+  }
+
+  private openBookmarkTopic(topic: Topic): void {
+    RouterManager.pushTopicDetail(topic.id, topic.getBookmarkTargetPostNumber());
+  }
+
   private openTopicPreview(topic: Topic): void {
     const category: Category | null = this.getCategory(topic);
     this.previewTopic = topic;
     this.previewCategory = category;
     this.previewParentCategory = category !== null ? this.getParentCategory(category as Category) : null;
+    this.isPreviewDeleting = false;
     this.isTopicPreviewVisible = true;
   }
 
@@ -205,10 +250,7 @@ export struct BookmarksPage {
 
   private openTopicFromPreview(topic: Topic): void {
     this.closeTopicPreview();
-    const targetPostNumber: number = topic.bookmarkedPostNumber !== null
-      ? topic.bookmarkedPostNumber as number
-      : topic.lastReadPostNumber;
-    RouterManager.pushTopicDetail(topic.id, targetPostNumber);
+    this.openBookmarkTopic(topic);
   }
 
   private openBookmarkEditor(topic: Topic): void {
@@ -224,9 +266,26 @@ export struct BookmarksPage {
     this.openBookmarkEditor(topic);
   }
 
+  private async deleteBookmarkFromPreview(topic: Topic): Promise<void> {
+    if (this.isPreviewDeleting || topic.bookmarkId === null || (topic.bookmarkId as number) <= 0) {
+      return;
+    }
+    this.isPreviewDeleting = true;
+    try {
+      await ApiClient.getInstance().deleteBookmark(topic.bookmarkId as number);
+      this.removeBookmarkById(topic.bookmarkId as number);
+      ToastService.show('已删除书签');
+      this.closeTopicPreview();
+    } catch (err) {
+      const message: string = ApiClient.formatError(err).replace('Error: ', '').trim();
+      ToastService.show(message.length > 0 ? message : '删除书签失败');
+    } finally {
+      this.isPreviewDeleting = false;
+    }
+  }
+
   private closeBookmarkEditor(): void {
     this.isBookmarkSheetVisible = false;
-    this.editingTopic = null;
   }
 
   private removeBookmarkById(bookmarkId: number): void {
@@ -308,7 +367,7 @@ export struct BookmarksPage {
                     ListItem() {
                       this.BookmarkTopicItem(topic)
                     }
-                  }, (topic: Topic) => topic.id.toString())
+                  }, (topic: Topic) => topic.getBookmarkIdentityKey())
                 }
 
                 if (this.loadMoreFailed) {
@@ -380,7 +439,11 @@ export struct BookmarksPage {
           height: SheetSize.MEDIUM,
           dragBar: false,
           showClose: false,
-          backgroundColor: $r('app.color.surface')
+          backgroundColor: $r('app.color.surface'),
+          onDisappear: () => {
+            this.isBookmarkSheetVisible = false;
+            this.editingTopic = null;
+          }
         })
       }
     }
@@ -447,6 +510,15 @@ export struct BookmarksPage {
             .fontColor('#C97700')
             .margin({ left: 6 })
 
+          Text(this.getBookmarkTypeLabel(topic))
+            .fontSize(11)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(this.isPostBookmark(topic) ? '#C97700' : '#2B5F94')
+            .padding({ left: 8, right: 8, top: 3, bottom: 3 })
+            .backgroundColor(this.isPostBookmark(topic) ? '#FFF3D6' : '#E8F0FE')
+            .borderRadius(9)
+            .margin({ left: 10 })
+
           if (this.getBookmarkReminderLabel(topic).length > 0) {
             Text(this.getBookmarkReminderLabel(topic))
               .fontSize(12)
@@ -456,37 +528,49 @@ export struct BookmarksPage {
         }
         .layoutWeight(1)
         .alignItems(VerticalAlign.Center)
-
-        if (topic.bookmarkId !== null && (topic.bookmarkId as number) > 0) {
-          Row() {
-            SymbolGlyph($r('sys.symbol.ellipsis_circle'))
-              .fontSize(16)
-              .fontColor([$r('app.color.on_surface_secondary')])
-          }
-          .width(28)
-          .height(28)
-          .borderRadius(14)
-          .backgroundColor($r('app.color.surface_variant'))
-          .justifyContent(FlexAlign.Center)
-          .alignItems(VerticalAlign.Center)
-          .onClick(() => {
-            this.openBookmarkEditor(topic);
-          })
-        }
       }
       .width('100%')
-      .padding({ left: 12, right: 12, top: 10, bottom: 2 })
+      .padding({ left: 12, right: 12, top: 10, bottom: 6 })
       .alignItems(VerticalAlign.Center)
+
+      if (this.getBookmarkTargetLabel(topic).length > 0) {
+        Row() {
+          Text('定位')
+            .fontSize(11)
+            .fontWeight(FontWeight.Medium)
+            .fontColor('#8A5A00')
+            .margin({ right: 8 })
+
+          Text(this.getBookmarkPostNumberLabel(topic))
+            .fontSize(11)
+            .fontWeight(FontWeight.Medium)
+            .fontColor('#C97700')
+            .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+            .backgroundColor('#FFF3D6')
+            .borderRadius(10)
+            .margin({ right: 8 })
+
+          Text(this.getBookmarkTargetLabel(topic))
+            .fontSize(11)
+            .fontColor($r('app.color.on_surface_secondary'))
+            .layoutWeight(1)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+        }
+        .width('100%')
+        .padding({ left: 12, right: 12, top: 2, bottom: 8 })
+        .backgroundColor('#FFF8EC')
+        .borderRadius(12)
+        .margin({ left: 12, right: 12, bottom: 6 })
+        .alignItems(VerticalAlign.Center)
+      }
 
       TopicCard({
         topic: topic,
         category: this.getCategory(topic),
         opAvatarUrl: this.getOpAvatarUrl(topic),
         onCardClick: (t: Topic) => {
-          const targetPostNumber: number = t.bookmarkedPostNumber !== null
-            ? t.bookmarkedPostNumber as number
-            : t.lastReadPostNumber;
-          RouterManager.pushTopicDetail(t.id, targetPostNumber);
+          this.openBookmarkTopic(t);
         },
         onCardLongPress: (t: Topic) => {
           this.openTopicPreview(t);
@@ -522,25 +606,74 @@ export struct BookmarksPage {
           this.closeTopicPreview();
         })
 
-        TopicPreviewDialog({
-          topic: this.previewTopic as Topic,
-          category: this.previewCategory,
-          parentCategory: this.previewParentCategory,
-          secondaryActionLabel: (this.previewTopic as Topic).bookmarkId !== null ? '编辑书签' : '',
-          onClose: () => {
-            this.closeTopicPreview();
-          },
-          onOpen: (topic: Topic) => {
-            this.openTopicFromPreview(topic);
-          },
-          onSecondaryAction: (topic: Topic) => {
-            this.openBookmarkEditorFromPreview(topic);
+        Column() {
+          TopicPreviewDialog({
+            topic: this.previewTopic as Topic,
+            category: this.previewCategory,
+            parentCategory: this.previewParentCategory,
+            compactMode: true,
+            showParticipants: false,
+            secondaryActionLabel: '',
+            onClose: () => {
+              this.closeTopicPreview();
+            },
+            onOpen: (topic: Topic) => {
+              this.openTopicFromPreview(topic);
+            },
+            onSecondaryAction: (_topic: Topic) => {
+            }
+          })
+
+          if ((this.previewTopic as Topic).bookmarkId !== null && ((this.previewTopic as Topic).bookmarkId as number) > 0) {
+            Column() {
+              this.PreviewMenuItem('编辑书签', '#2B5F94', false, () => {
+                this.openBookmarkEditorFromPreview(this.previewTopic as Topic);
+              })
+              this.PreviewMenuDivider()
+              this.PreviewMenuItem(this.isPreviewDeleting ? '删除中...' : '删除书签', '#C83A3A', this.isPreviewDeleting, () => {
+                this.deleteBookmarkFromPreview(this.previewTopic as Topic).catch(() => {
+                });
+              })
+            }
+            .width('88%')
+            .constraintSize({ maxWidth: 520 })
+            .margin({ top: 12 })
+            .backgroundColor($r('app.color.surface'))
+            .borderRadius(20)
+            .shadow({ radius: 12, color: '#1F000000', offsetX: 0, offsetY: 6 })
           }
-        })
+        }
+        .width('100%')
+        .alignItems(HorizontalAlign.Center)
       }
       .width('100%')
       .height('100%')
     }
+  }
+
+  @Builder
+  private PreviewMenuItem(label: string, colorValue: string, disabled: boolean, action: () => void) {
+    Row() {
+      Text(label)
+        .fontSize(16)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(disabled ? '#99A3B4' : colorValue)
+    }
+    .width('100%')
+    .padding({ left: 22, right: 22, top: 18, bottom: 18 })
+    .opacity(disabled ? 0.7 : 1)
+    .onClick(() => {
+      if (!disabled) {
+        action();
+      }
+    })
+  }
+
+  @Builder
+  private PreviewMenuDivider() {
+    Divider()
+      .strokeWidth(1)
+      .color($r('app.color.divider_light'))
   }
 
   @Builder

@@ -105,8 +105,16 @@
       "value": "#66FFFFFF"
     },
     {
+      "name": "fab_glass_tint",
+      "value": "#3DFFFFFF"
+    },
+    {
       "name": "tab_glass_stroke",
       "value": "#33FFFFFF"
+    },
+    {
+      "name": "fab_glass_stroke",
+      "value": "#24FFFFFF"
     },
     {
       "name": "tab_glass_shadow",
@@ -169,6 +177,10 @@
       "value": "#F5F5F5"
     },
     {
+      "name": "input_border",
+      "value": "#D8DCE6"
+    },
+    {
       "name": "divider_light",
       "value": "#EEEEEE"
     },
@@ -203,6 +215,14 @@
     {
       "name": "badge_background_light",
       "value": "#EBF4FA"
+    },
+    {
+      "name": "error_background_soft",
+      "value": "#FDECEC"
+    },
+    {
+      "name": "avatar_placeholder",
+      "value": "#E8EAF0"
     },
     {
       "name": "tag_purple",
