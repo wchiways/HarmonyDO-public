@@ -1,3 +1,4 @@
+import { util } from '@kit.ArkTS';
 import { http } from '@kit.NetworkKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { AppConstants } from '../../common/constants/AppConstants';
@@ -19,6 +20,15 @@ export interface HttpBinaryResponse {
   code: number;
   bytes: ArrayBuffer;
   header: Object | null;
+}
+
+type HttpRequestBody = string | ArrayBuffer | null;
+
+export interface HttpMultipartFilePart {
+  fieldName: string;
+  fileName: string;
+  mimeType: string;
+  data: ArrayBuffer;
 }
 
 /**
@@ -122,6 +132,138 @@ export class HttpClient {
     return code >= 200 && code < 300;
   }
 
+  private hasBody(body: HttpRequestBody): boolean {
+    if (body === null) {
+      return false;
+    }
+    if (typeof body === 'string') {
+      return body.length > 0;
+    }
+    return body.byteLength > 0;
+  }
+
+  private encodeUtf8(text: string): Uint8Array {
+    const encoder: util.TextEncoder = new util.TextEncoder();
+    return encoder.encodeInto(text);
+  }
+
+  private appendQueryParams(url: string, params: Record<string, Object> | null): string {
+    if (params === null) {
+      return url;
+    }
+    const keys: string[] = Object.keys(params);
+    if (keys.length === 0) {
+      return url;
+    }
+    const parts: string[] = [];
+    for (let i: number = 0; i < keys.length; i++) {
+      const key: string = keys[i];
+      const raw: Object = params[key];
+      if (raw === null || raw === undefined) {
+        continue;
+      }
+
+      if (Array.isArray(raw)) {
+        const arr: Object[] = raw as Object[];
+        for (let j: number = 0; j < arr.length; j++) {
+          const item: Object = arr[j];
+          if (item === null || item === undefined) {
+            continue;
+          }
+          if (typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean') {
+            parts.push(`${key}=${encodeURIComponent(item.toString())}`);
+          }
+        }
+        continue;
+      }
+
+      if (typeof raw === 'string' || typeof raw === 'number' || typeof raw === 'boolean') {
+        parts.push(`${key}=${encodeURIComponent(raw.toString())}`);
+      }
+    }
+    if (parts.length === 0) {
+      return url;
+    }
+    return `${url}?${parts.join('&')}`;
+  }
+
+  private buildMultipartBody(
+    fields: Record<string, Object>,
+    files: HttpMultipartFilePart[],
+    boundary: string
+  ): ArrayBuffer {
+    const chunks: Uint8Array[] = [];
+    let totalLength: number = 0;
+
+    const pushChunk = (chunk: Uint8Array): void => {
+      if (chunk.byteLength <= 0) {
+        return;
+      }
+      chunks.push(chunk);
+      totalLength = totalLength + chunk.byteLength;
+    };
+
+    const pushText = (text: string): void => {
+      pushChunk(this.encodeUtf8(text));
+    };
+
+    const pushField = (fieldName: string, value: string): void => {
+      pushText(`--${boundary}\r\n`);
+      pushText(`Content-Disposition: form-data; name="${fieldName}"\r\n\r\n`);
+      pushText(value);
+      pushText('\r\n');
+    };
+
+    const fieldKeys: string[] = Object.keys(fields);
+    for (let i: number = 0; i < fieldKeys.length; i++) {
+      const key: string = fieldKeys[i];
+      const raw: Object = fields[key];
+      if (raw === null || raw === undefined) {
+        continue;
+      }
+
+      if (Array.isArray(raw)) {
+        const arr: Object[] = raw as Object[];
+        for (let j: number = 0; j < arr.length; j++) {
+          const item: Object = arr[j];
+          if (item === null || item === undefined) {
+            continue;
+          }
+          if (typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean') {
+            pushField(key, item.toString());
+          }
+        }
+        continue;
+      }
+
+      if (typeof raw === 'string' || typeof raw === 'number' || typeof raw === 'boolean') {
+        pushField(key, raw.toString());
+      }
+    }
+
+    for (let i: number = 0; i < files.length; i++) {
+      const file: HttpMultipartFilePart = files[i];
+      const fieldName: string = file.fieldName.trim().length > 0 ? file.fieldName.trim() : 'file';
+      const fileName: string = file.fileName.trim().length > 0 ? file.fileName.trim() : `upload_${Date.now()}`;
+      const mimeType: string = file.mimeType.trim().length > 0 ? file.mimeType.trim() : 'application/octet-stream';
+      pushText(`--${boundary}\r\n`);
+      pushText(`Content-Disposition: form-data; name="${fieldName}"; filename="${fileName}"\r\n`);
+      pushText(`Content-Type: ${mimeType}\r\n\r\n`);
+      pushChunk(new Uint8Array(file.data));
+      pushText('\r\n');
+    }
+
+    pushText(`--${boundary}--\r\n`);
+
+    const merged: Uint8Array = new Uint8Array(totalLength);
+    let offset: number = 0;
+    for (let i: number = 0; i < chunks.length; i++) {
+      merged.set(chunks[i], offset);
+      offset = offset + chunks[i].byteLength;
+    }
+    return merged.buffer;
+  }
+
   private async syncAuthContext(): Promise<void> {
     try {
       await this.cookieStore.init();
@@ -222,7 +364,7 @@ export class HttpClient {
   private async requestWithCsrfRetry(
     url: string,
     method: http.RequestMethod,
-    body: string | null,
+    body: HttpRequestBody,
     accept: string,
     contentType: string,
     extraHeaders: Record<string, string> | null,
@@ -337,7 +479,7 @@ export class HttpClient {
   private async requestOnce(
     url: string,
     method: http.RequestMethod,
-    body: string | null,
+    body: HttpRequestBody,
     headers: Record<string, string> | null = null,
     connectTimeout: number | null = null,
     readTimeout: number | null = null
@@ -350,8 +492,12 @@ export class HttpClient {
       req['header'] = headers !== null ? headers : this.buildHeaders();
       req['connectTimeout'] = connectTimeout !== null ? connectTimeout : AppConstants.REQUEST_TIMEOUT;
       req['readTimeout'] = readTimeout !== null ? readTimeout : AppConstants.REQUEST_TIMEOUT;
-      if (body !== null && body.length > 0) {
-        req['extraData'] = body;
+      if (this.hasBody(body)) {
+        if (typeof body === 'string') {
+          req['extraData'] = body;
+        } else if (body !== null) {
+          req['extraData'] = body as Object;
+        }
       }
 
       const response = await httpRequest.request(url, req).catch((err: Object) => {
@@ -428,7 +574,7 @@ export class HttpClient {
   private async requestWithCfGuardDetailed(
     url: string,
     method: http.RequestMethod,
-    body: string | null,
+    body: HttpRequestBody,
     skipCfGuard: boolean,
     headers: Record<string, string> | null = null,
     connectTimeout: number | null = null,
@@ -632,7 +778,7 @@ export class HttpClient {
     return false;
   }
 
-  private async requestWithCfGuard(url: string, method: http.RequestMethod, body: string | null, skipCfGuard: boolean): Promise<string> {
+  private async requestWithCfGuard(url: string, method: http.RequestMethod, body: HttpRequestBody, skipCfGuard: boolean): Promise<string> {
     const resp: Record<string, Object> = await this.requestWithCfGuardDetailed(url, method, body, skipCfGuard, null, null, null, null, 0);
     const codeVal = resp['code'];
     const code: number = codeVal !== undefined && codeVal !== null ? codeVal as number : 0;
@@ -684,41 +830,7 @@ export class HttpClient {
   ): Promise<string> {
     await this.cookieStore.init();
     let url: string = `${this.baseUrl}${path}`;
-
-    // 拼接查询参数
-    if (params !== null) {
-      const keys: string[] = Object.keys(params);
-      if (keys.length > 0) {
-        const parts: string[] = [];
-        for (let i = 0; i < keys.length; i++) {
-          const key: string = keys[i];
-          const raw: Object = params[key];
-
-          if (raw === null || raw === undefined) {
-            continue;
-          }
-
-          if (Array.isArray(raw)) {
-            const arr: Object[] = raw as Object[];
-            for (let j = 0; j < arr.length; j++) {
-              const item: Object = arr[j];
-              if (item === null || item === undefined) continue;
-              if (typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean') {
-                parts.push(`${key}=${encodeURIComponent(item.toString())}`);
-              }
-            }
-            continue;
-          }
-
-          if (typeof raw === 'string' || typeof raw === 'number' || typeof raw === 'boolean') {
-            parts.push(`${key}=${encodeURIComponent(raw.toString())}`);
-          }
-        }
-        if (parts.length > 0) {
-          url = `${url}?${parts.join('&')}`;
-        }
-      }
-    }
+    url = this.appendQueryParams(url, params);
 
     hilog.info(0x0000, TAG, 'GET %{public}s', url);
 
@@ -755,41 +867,7 @@ export class HttpClient {
   ): Promise<string> {
     await this.cookieStore.init();
     let url: string = `${this.baseUrl}${path}`;
-
-    // 拼接查询参数（key 不编码，保持与 Discourse 参数兼容）
-    if (params !== null) {
-      const keys: string[] = Object.keys(params);
-      if (keys.length > 0) {
-        const parts: string[] = [];
-        for (let i = 0; i < keys.length; i++) {
-          const key: string = keys[i];
-          const raw: Object = params[key];
-
-          if (raw === null || raw === undefined) {
-            continue;
-          }
-
-          if (Array.isArray(raw)) {
-            const arr: Object[] = raw as Object[];
-            for (let j = 0; j < arr.length; j++) {
-              const item: Object = arr[j];
-              if (item === null || item === undefined) continue;
-              if (typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean') {
-                parts.push(`${key}=${encodeURIComponent(item.toString())}`);
-              }
-            }
-            continue;
-          }
-
-          if (typeof raw === 'string' || typeof raw === 'number' || typeof raw === 'boolean') {
-            parts.push(`${key}=${encodeURIComponent(raw.toString())}`);
-          }
-        }
-        if (parts.length > 0) {
-          url = `${url}?${parts.join('&')}`;
-        }
-      }
-    }
+    url = this.appendQueryParams(url, params);
 
     const headers: Record<string, string> = this.buildHeaders(accept, 'text/plain', null);
     const resp: Record<string, Object> = await this.requestWithCfGuardDetailed(
@@ -923,6 +1001,46 @@ export class HttpClient {
       body,
       'application/json',
       'application/x-www-form-urlencoded',
+      extraHeaders,
+      connectTimeoutMs,
+      readTimeoutMs,
+      guardOptions
+    );
+    const codeVal = resp['code'];
+    const code: number = codeVal !== undefined && codeVal !== null ? codeVal as number : 0;
+    const resultVal = resp['result'];
+    const result: string = resultVal !== undefined && resultVal !== null ? resultVal as string : '';
+    if (this.isSuccessStatus(code)) {
+      return result;
+    }
+    throw new Error(`HTTP ${code}`);
+  }
+
+  /**
+   * POST multipart/form-data 并返回文本响应
+   */
+  async postMultipartText(
+    path: string,
+    fields: Record<string, Object>,
+    files: HttpMultipartFilePart[],
+    queryParams: Record<string, Object> | null = null,
+    extraHeaders: Record<string, string> | null = null,
+    readTimeoutMs: number = 60000,
+    connectTimeoutMs: number | null = null,
+    guardOptions: CfGuardOptions | null = null
+  ): Promise<string> {
+    await this.cookieStore.init();
+    let url: string = `${this.baseUrl}${path}`;
+    url = this.appendQueryParams(url, queryParams);
+
+    const boundary: string = `----HarmonyDo${Date.now().toString(36)}${Math.random().toString(36).substring(2, 10)}`;
+    const body: ArrayBuffer = this.buildMultipartBody(fields, files, boundary);
+    const resp: Record<string, Object> = await this.requestWithCsrfRetry(
+      url,
+      http.RequestMethod.POST,
+      body,
+      'application/json',
+      `multipart/form-data; boundary=${boundary}`,
       extraHeaders,
       connectTimeoutMs,
       readTimeoutMs,

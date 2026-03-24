@@ -27,6 +27,9 @@ export class ApiConstants {
   /** 获取站点信息（含分类） */
   static readonly SITE: string = '/site.json';
 
+  /** 获取表情库 */
+  static readonly EMOJIS: string = '/emojis.json';
+
   /** 获取当前用户 */
   static readonly CURRENT_USER: string = '/session/current.json';
 
@@ -95,6 +98,9 @@ export class ApiConstants {
 
   /** 创建帖子 / 回复 */
   static readonly POSTS: string = '/posts.json';
+
+  /** 上传图片 / 附件 */
+  static readonly UPLOADS: string = '/uploads.json';
 
   /** 获取指定草稿 */
   static draft(draftKey: string): string {

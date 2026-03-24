@@ -1,5 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { CfGuardOptions, HttpClient } from './HttpClient';
+import { CfGuardOptions, HttpClient, HttpMultipartFilePart } from './HttpClient';
 import { ApiConstants } from '../../common/constants/ApiConstants';
 import { AppConstants } from '../../common/constants/AppConstants';
 import { Topic, TopicListResponse, Tag } from '../../models/Topic';
@@ -12,8 +12,12 @@ import { Badge, BadgeDetailResponse, UserBadgeListResponse } from '../../models/
 import { NotificationListResponse } from '../../models/Notification';
 import { Poll, Post } from '../../models/Post';
 import { UserActionResponse, UserReactionsResponse } from '../../models/UserAction';
+import { Emoji } from '../../models/Emoji';
+import { UploadedImage } from '../../models/UploadedImage';
 import { PreloadedDataService } from '../messagebus/PreloadedDataService';
+import { MessageBusService } from '../messagebus/MessageBusService';
 import { EmojiResolver } from '../../common/utils/EmojiResolver';
+import { ComposerUploadUrlCache } from '../../common/utils/ComposerUploadUrlCache';
 
 const TAG: string = 'ApiClient';
 const MOCK_PAGE_SIZE: number = 30;
@@ -67,6 +71,8 @@ export class ApiClient {
   // 会话内缓存：避免多页面重复拉取 site.json
   private siteInfoCache: SiteResponse | null = null;
   private siteInfoInFlight: Promise<SiteResponse> | null = null;
+  private emojiGroupsCache: Map<string, Emoji[]> | null = null;
+  private emojiGroupsInFlight: Promise<Map<string, Emoji[]>> | null = null;
   private currentUserCache: User | null = null;
   private currentUserCacheAt: number = 0;
   private currentUserInFlight: Promise<User | null> | null = null;
@@ -434,6 +440,43 @@ export class ApiClient {
     return list;
   }
 
+  private static createMockEmoji(name: string, group: string, aliases: string[] = []): Emoji {
+    const emoji: Emoji = new Emoji();
+    emoji.name = name;
+    emoji.group = group;
+    emoji.searchAliases = aliases;
+    return emoji;
+  }
+
+  private static buildMockEmojiGroups(): Map<string, Emoji[]> {
+    const groups: Map<string, Emoji[]> = new Map();
+    groups.set('smileys_&_emotion', [
+      ApiClient.createMockEmoji('smile', 'smileys_&_emotion', ['happy', '开心']),
+      ApiClient.createMockEmoji('grinning', 'smileys_&_emotion', ['laugh', '笑']),
+      ApiClient.createMockEmoji('joy', 'smileys_&_emotion', ['tears', '喜极而泣']),
+      ApiClient.createMockEmoji('heart_eyes', 'smileys_&_emotion', ['love', '喜欢']),
+      ApiClient.createMockEmoji('thinking', 'smileys_&_emotion', ['hmm', '思考']),
+      ApiClient.createMockEmoji('sob', 'smileys_&_emotion', ['cry', '哭']),
+      ApiClient.createMockEmoji('rage', 'smileys_&_emotion', ['mad', '生气']),
+      ApiClient.createMockEmoji('sparkles', 'smileys_&_emotion', ['stars', '闪亮'])
+    ]);
+    groups.set('people_&_body', [
+      ApiClient.createMockEmoji('wave', 'people_&_body', ['hello', '招手']),
+      ApiClient.createMockEmoji('thumbsup', 'people_&_body', ['good', '赞']),
+      ApiClient.createMockEmoji('clap', 'people_&_body', ['applause', '鼓掌']),
+      ApiClient.createMockEmoji('pray', 'people_&_body', ['thanks', '感谢']),
+      ApiClient.createMockEmoji('muscle', 'people_&_body', ['strong', '加油'])
+    ]);
+    groups.set('symbols', [
+      ApiClient.createMockEmoji('heart', 'symbols', ['love', '爱心']),
+      ApiClient.createMockEmoji('fire', 'symbols', ['hot', '火']),
+      ApiClient.createMockEmoji('100', 'symbols', ['full', '满分']),
+      ApiClient.createMockEmoji('warning', 'symbols', ['alert', '注意']),
+      ApiClient.createMockEmoji('rocket', 'symbols', ['launch', '起飞'])
+    ]);
+    return groups;
+  }
+
   /**
    * 获取单例
    */
@@ -693,12 +736,76 @@ export class ApiClient {
     return await this.fetchSiteInfo();
   }
 
+  async getEmojis(): Promise<Map<string, Emoji[]>> {
+    if (AppConstants.USE_MOCK_DATA) {
+      return ApiClient.buildMockEmojiGroups();
+    }
+    if (this.emojiGroupsCache !== null) {
+      return this.emojiGroupsCache;
+    }
+    if (this.emojiGroupsInFlight !== null) {
+      return await this.emojiGroupsInFlight;
+    }
+
+    this.emojiGroupsInFlight = this.fetchEmojis();
+    try {
+      const groups: Map<string, Emoji[]> = await this.emojiGroupsInFlight;
+      this.emojiGroupsCache = groups;
+      return groups;
+    } finally {
+      this.emojiGroupsInFlight = null;
+    }
+  }
+
   private async fetchSiteInfo(): Promise<SiteResponse> {
     const result: string = await this.http.get(ApiConstants.SITE);
     const json: Record<string, Object> = JSON.parse(result) as Record<string, Object>;
     this.tryConfigureMessageBusFromSiteJson(json);
     EmojiResolver.configureFromSiteJson(json);
     return SiteResponse.fromJson(json);
+  }
+
+  private async fetchEmojis(): Promise<Map<string, Emoji[]>> {
+    const result: string = await this.http.get(ApiConstants.EMOJIS);
+    const parsed: Object = JSON.parse(result) as Object;
+    if (parsed === null || parsed === undefined || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('Invalid emoji response');
+    }
+    return this.parseEmojiGroups(parsed as Record<string, Object>);
+  }
+
+  private parseEmojiGroups(json: Record<string, Object>): Map<string, Emoji[]> {
+    const groups: Map<string, Emoji[]> = new Map();
+    const keys: string[] = Object.keys(json);
+    for (let i = 0; i < keys.length; i++) {
+      const key: string = keys[i];
+      const rawValue: Object | undefined = json[key];
+      if (!Array.isArray(rawValue)) {
+        continue;
+      }
+
+      const emojis: Emoji[] = [];
+      const arr: Object[] = rawValue as Object[];
+      for (let j = 0; j < arr.length; j++) {
+        const item: Object = arr[j];
+        if (item === null || item === undefined || typeof item !== 'object') {
+          continue;
+        }
+        const emoji: Emoji = Emoji.fromJson(item as Record<string, Object>);
+        if (emoji.name.trim().length === 0) {
+          continue;
+        }
+        if (emoji.group.trim().length === 0) {
+          emoji.group = key;
+        }
+        emojis.push(emoji);
+      }
+
+      if (emojis.length > 0) {
+        groups.set(key, emojis);
+      }
+    }
+    return groups;
   }
 
   private tryConfigureMessageBusFromSiteJson(json: Record<string, Object>): void {
@@ -945,6 +1052,100 @@ export class ApiClient {
     }
 
     throw new Error('未知响应格式');
+  }
+
+  async uploadComposerImage(
+    bytes: ArrayBuffer,
+    fileName: string,
+    mimeType: string,
+    fallbackWidth: number = 0,
+    fallbackHeight: number = 0
+  ): Promise<UploadedImage> {
+    if (bytes === undefined || bytes === null || bytes.byteLength <= 0) {
+      throw new Error('图片数据不可用');
+    }
+
+    const normalizedFileName: string = fileName !== undefined && fileName !== null && fileName.trim().length > 0
+      ? fileName.trim()
+      : `image_${Date.now()}.jpg`;
+    const normalizedMimeType: string = mimeType !== undefined && mimeType !== null && mimeType.trim().length > 0
+      ? mimeType.trim()
+      : 'image/jpeg';
+
+    if (AppConstants.USE_MOCK_DATA) {
+      const mock: UploadedImage = new UploadedImage();
+      mock.shortUrl = `/uploads/mock/${Date.now()}/${encodeURIComponent(normalizedFileName)}`;
+      mock.url = mock.shortUrl;
+      mock.originalFilename = normalizedFileName;
+      mock.width = fallbackWidth;
+      mock.height = fallbackHeight;
+      return mock;
+    }
+
+    const clientId: string = MessageBusService.getInstance().getClientId();
+    const form: Record<string, Object> = {};
+    form['upload_type'] = 'composer';
+    form['synchronous'] = 'true';
+
+    const files: HttpMultipartFilePart[] = [{
+      fieldName: 'file',
+      fileName: normalizedFileName,
+      mimeType: normalizedMimeType,
+      data: bytes
+    }];
+
+    let queryParams: Record<string, Object> | null = null;
+    if (clientId.trim().length > 0) {
+      queryParams = {};
+      queryParams['client_id'] = clientId.trim();
+    }
+
+    try {
+      const rawText: string = await this.http.postMultipartText(
+        ApiConstants.UPLOADS,
+        form,
+        files,
+        queryParams
+      );
+      const json: Record<string, Object> = JSON.parse(rawText) as Record<string, Object>;
+        const uploaded: UploadedImage = UploadedImage.fromJson(
+          json,
+          normalizedFileName,
+          fallbackWidth,
+          fallbackHeight
+        );
+        if (uploaded.hasUsableUrl()) {
+          ComposerUploadUrlCache.register(uploaded.shortUrl, uploaded.url);
+          return uploaded;
+        }
+
+      const errorsVal = json['errors'];
+      if (errorsVal !== undefined && errorsVal !== null && Array.isArray(errorsVal)) {
+        const errs: Object[] = errorsVal as Object[];
+        let message: string = '';
+        for (let i = 0; i < errs.length; i++) {
+          const part: string = errs[i] !== undefined && errs[i] !== null ? errs[i].toString().trim() : '';
+          if (part.length === 0) {
+            continue;
+          }
+          message = message.length > 0 ? `${message}\n${part}` : part;
+        }
+        throw new Error(message.length > 0 ? message : '图片上传失败');
+      }
+      throw new Error('图片上传成功但未返回可用链接');
+    } catch (err) {
+      const message: string = err !== undefined && err !== null ? err.toString().replace('Error: ', '') : '图片上传失败';
+      if (message.indexOf('HTTP 413') >= 0) {
+        throw new Error('图片体积过大，请压缩后重试');
+      }
+      if (message.indexOf('HTTP 422') >= 0) {
+        throw new Error('图片格式不受支持或上传被拒绝');
+      }
+      if (message.indexOf('HTTP 429') >= 0) {
+        throw new Error('上传过于频繁，请稍后重试');
+      }
+      throw new Error(message.length > 0 ? message : '图片上传失败');
+    }
   }
 
   /**

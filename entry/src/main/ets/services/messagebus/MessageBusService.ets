@@ -83,6 +83,10 @@ export class MessageBusService {
     return this.everSucceeded;
   }
 
+  getClientId(): string {
+    return this.clientId;
+  }
+
   private getSchemeFromAppBaseUrl(): string {
     try {
       const base: string = AppConstants.BASE_URL;

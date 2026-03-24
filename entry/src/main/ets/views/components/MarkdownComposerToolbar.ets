@@ -2,6 +2,9 @@
 export struct MarkdownComposerToolbar {
   @Param isPreview: boolean = false;
   @Param showPreviewButton: boolean = true;
+  @Param isEmojiActive: boolean = false;
+  @Param isImageUploading: boolean = false;
+  @Param imageUploadProgressLabel: string = '';
   @Event onInsertEmoji: () => void = () => {
   };
   @Event onInsertImage: () => void = () => {
@@ -27,6 +30,10 @@ export struct MarkdownComposerToolbar {
     .margin({ left: 4, right: 4 })
   }
 
+  private getImageButtonWidth(): number {
+    return this.isImageUploading && this.imageUploadProgressLabel.length > 0 ? 56 : 44;
+  }
+
   @Builder
   private GlyphButton(symbol: Resource, onTap: () => void, active: boolean = false) {
     Row() {
@@ -41,6 +48,37 @@ export struct MarkdownComposerToolbar {
     .borderRadius(12)
     .onClick(() => {
       onTap();
+    })
+  }
+
+  @Builder
+  private ImageButton() {
+    Row() {
+      if (this.isImageUploading && this.imageUploadProgressLabel.length > 0) {
+        Text(this.imageUploadProgressLabel)
+          .fontSize(11)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.primary'))
+      } else if (this.isImageUploading) {
+        LoadingProgress()
+          .width(18)
+          .height(18)
+      } else {
+        Text('图')
+          .fontSize(18)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.on_surface_secondary'))
+      }
+    }
+    .width(this.getImageButtonWidth())
+    .height(44)
+    .justifyContent(FlexAlign.Center)
+    .alignItems(VerticalAlign.Center)
+    .borderRadius(12)
+    .onClick(() => {
+      if (!this.isImageUploading) {
+        this.onInsertImage();
+      }
     })
   }
 
@@ -65,12 +103,12 @@ export struct MarkdownComposerToolbar {
 
   build() {
     Row() {
-      this.GlyphButton($r('sys.symbol.face_smiling'), this.onInsertEmoji)
+      this.GlyphButton($r('sys.symbol.face_smiling'), this.onInsertEmoji, this.isEmojiActive)
       this.DividerLine()
 
       Scroll() {
         Row() {
-          this.TextButton('图', this.onInsertImage)
+          this.ImageButton()
           this.TextButton('H', this.onInsertHeading, true, false)
           this.TextButton('B', this.onInsertBold, true, false)
           this.TextButton('I', this.onInsertItalic, false, true)

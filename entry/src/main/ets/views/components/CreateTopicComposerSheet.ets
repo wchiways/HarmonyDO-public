@@ -7,8 +7,11 @@ import { ToastService } from '../../common/utils/ToastService';
 import { TagSelectionSheet } from './TagControls';
 import { CategoryIcon } from './CategoryIcon';
 import { MarkdownComposerToolbar } from './MarkdownComposerToolbar';
+import { ComposerEmojiStickerPanel } from './ComposerEmojiStickerPanel';
 import { MarkdownComposerUtils } from '../../common/utils/MarkdownComposerUtils';
 import { PostRichContent } from './PostRichContent';
+import { Emoji } from '../../models/Emoji';
+import { ComposerImageUploadService } from '../../common/utils/ComposerImageUploadService';
 
 @ComponentV2
 export struct CreateTopicComposerSheet {
@@ -35,13 +38,21 @@ export struct CreateTopicComposerSheet {
   @Local private isCategorySheetVisible: boolean = false;
   @Local private isTagSheetVisible: boolean = false;
   @Local private isPreview: boolean = false;
+  @Local private isEmojiPanelVisible: boolean = false;
   @Local private isRestorePromptVisible: boolean = false;
   @Local private isDiscardConfirmVisible: boolean = false;
   @Local private pendingRestoreDraft: Draft | null = null;
+  @Local private contentSelectionStart: number = 0;
+  @Local private contentSelectionEnd: number = 0;
+  @Local private isImageUploading: boolean = false;
+  @Local private imageUploadProgressLabel: string = '';
 
   private draftSaveTimerId: number = -1;
   private submitted: boolean = false;
   private loadRequestId: number = 0;
+  private readonly titleController: TextInputController = new TextInputController();
+  private readonly contentController: TextAreaController = new TextAreaController();
+  private readonly emojiPanelHeight: number = 320;
 
   aboutToAppear(): void {
     this.resetComposerState();
@@ -78,9 +89,14 @@ export struct CreateTopicComposerSheet {
     this.isCategorySheetVisible = false;
     this.isTagSheetVisible = false;
     this.isPreview = false;
+    this.isEmojiPanelVisible = false;
     this.isRestorePromptVisible = false;
     this.isDiscardConfirmVisible = false;
     this.pendingRestoreDraft = null;
+    this.contentSelectionStart = 0;
+    this.contentSelectionEnd = 0;
+    this.isImageUploading = false;
+    this.imageUploadProgressLabel = '';
   }
 
   private getDraftKey(): string {
@@ -95,8 +111,16 @@ export struct CreateTopicComposerSheet {
     return 20;
   }
 
+  private getToolbarHeight(): number {
+    return 56 + WindowManager.getSystemAvoidAreaBottomVp();
+  }
+
   private getBottomToolbarSpacerHeight(): number {
-    return 64 + WindowManager.getSystemAvoidAreaBottomVp();
+    let height: number = this.getToolbarHeight();
+    if (this.isEmojiPanelVisible && !this.isPreview) {
+      height = height + this.emojiPanelHeight;
+    }
+    return height;
   }
 
   private clearDraftSaveTimer(): void {
@@ -200,6 +224,7 @@ export struct CreateTopicComposerSheet {
     this.draftSequence = draft.sequence;
     this.title = draft.data.title !== null ? draft.data.title as string : '';
     this.content = draft.data.reply !== null ? draft.data.reply as string : '';
+    this.syncContentSelection(this.content.length, this.content.length);
     const nextTags: string[] = draft.data.tags !== null ? this.normalizeTags(draft.data.tags as string[]) : [];
     this.selectedTags = nextTags;
     this.draftSelectedTags = [...nextTags];
@@ -443,15 +468,177 @@ export struct CreateTopicComposerSheet {
     this.scheduleDraftSave();
   }
 
+  private syncContentSelection(selectionStart: number, selectionEnd: number): void {
+    const max: number = this.content.length;
+    let start: number = selectionStart;
+    let end: number = selectionEnd;
+    if (start < 0) {
+      start = 0;
+    }
+    if (end < 0) {
+      end = 0;
+    }
+    if (start > max) {
+      start = max;
+    }
+    if (end > max) {
+      end = max;
+    }
+    if (start > end) {
+      const temp: number = start;
+      start = end;
+      end = temp;
+    }
+    this.contentSelectionStart = start;
+    this.contentSelectionEnd = end;
+  }
+
+  private syncSelectionToTail(): void {
+    this.syncContentSelection(this.content.length, this.content.length);
+  }
+
+  private restoreContentCaretAsync(selectionStart: number, selectionEnd: number): void {
+    setTimeout(() => {
+      try {
+        this.contentController.setTextSelection(selectionStart, selectionEnd);
+      } catch (_) {
+        try {
+          if (selectionStart === selectionEnd) {
+            this.contentController.caretPosition(selectionStart);
+          }
+        } catch (_) {
+        }
+      }
+    }, 16);
+  }
+
+  private stopInputEditing(): void {
+    try {
+      this.titleController.stopEditing();
+    } catch (_) {
+    }
+    try {
+      this.contentController.stopEditing();
+    } catch (_) {
+    }
+  }
+
+  private closeEmojiPanel(): void {
+    this.isEmojiPanelVisible = false;
+  }
+
+  private toggleEmojiPanel(): void {
+    this.isPreview = false;
+    const nextVisible: boolean = !this.isEmojiPanelVisible;
+    if (nextVisible) {
+      this.stopInputEditing();
+    }
+    this.isEmojiPanelVisible = nextVisible;
+  }
+
+  private insertEmoji(emoji: Emoji): void {
+    const result = MarkdownComposerUtils.insertEmojiShortcode(
+      this.content,
+      emoji.name,
+      this.contentSelectionStart,
+      this.contentSelectionEnd
+    );
+    if (result.text === this.content) {
+      return;
+    }
+    this.content = result.text;
+    this.syncContentSelection(result.selectionStart, result.selectionEnd);
+    this.isPreview = false;
+    this.errorMessage = '';
+    this.scheduleDraftSave();
+    this.restoreContentCaretAsync(result.selectionStart, result.selectionEnd);
+  }
+
+  private insertSticker(markdown: string): void {
+    const result = MarkdownComposerUtils.insertStickerMarkdown(
+      this.content,
+      markdown,
+      this.contentSelectionStart,
+      this.contentSelectionEnd
+    );
+    if (result.text === this.content) {
+      return;
+    }
+    this.content = result.text;
+    this.syncContentSelection(result.selectionStart, result.selectionEnd);
+    this.isPreview = false;
+    this.errorMessage = '';
+    this.scheduleDraftSave();
+    this.restoreContentCaretAsync(result.selectionStart, result.selectionEnd);
+  }
+
+  private async pickAndUploadImages(): Promise<void> {
+    if (this.isSubmitting || this.isImageUploading) {
+      return;
+    }
+
+    this.isPreview = false;
+    this.closeEmojiPanel();
+    this.stopInputEditing();
+    this.errorMessage = '';
+    this.isImageUploading = true;
+    this.imageUploadProgressLabel = '';
+
+    try {
+      const markdowns: string[] = await ComposerImageUploadService.pickAndUploadMarkdowns(
+        9,
+        (current: number, total: number): void => {
+          this.imageUploadProgressLabel = total > 1 ? `${current}/${total}` : '';
+        }
+      );
+      if (markdowns.length === 0) {
+        return;
+      }
+
+      const result = MarkdownComposerUtils.insertImageMarkdowns(
+        this.content,
+        markdowns,
+        this.contentSelectionStart,
+        this.contentSelectionEnd
+      );
+      if (result.text === this.content) {
+        return;
+      }
+
+      this.content = result.text;
+      this.syncContentSelection(result.selectionStart, result.selectionEnd);
+      this.errorMessage = '';
+      this.scheduleDraftSave();
+      this.restoreContentCaretAsync(result.selectionStart, result.selectionEnd);
+      if (MarkdownComposerUtils.shouldWrapImagesWithGrid(markdowns.length)) {
+        ToastService.show(`已插入 ${markdowns.length} 张图片（网格）`);
+      } else {
+        ToastService.show(markdowns.length > 1 ? `已插入 ${markdowns.length} 张图片` : '图片已插入');
+      }
+    } catch (err) {
+      const message: string = err !== undefined && err !== null
+        ? err.toString().replace('Error: ', '')
+        : '图片上传失败';
+      this.errorMessage = message;
+      ToastService.show(message);
+    } finally {
+      this.isImageUploading = false;
+      this.imageUploadProgressLabel = '';
+    }
+  }
+
   private applyContentTransform(transform: (text: string) => string): void {
     const next: string = transform(this.content);
     if (next === this.content) {
       return;
     }
     this.content = next;
+    this.syncSelectionToTail();
     this.isPreview = false;
+    this.closeEmojiPanel();
     this.errorMessage = '';
     this.scheduleDraftSave();
+    this.restoreContentCaretAsync(this.contentSelectionStart, this.contentSelectionEnd);
   }
 
   private buildPreviewHtml(): string {
@@ -567,7 +754,11 @@ export struct CreateTopicComposerSheet {
       .layoutWeight(1)
       .scrollBar(BarState.Off)
     } else {
-      TextArea({ text: this.content, placeholder: '输入正文，支持 Markdown...' })
+      TextArea({
+        text: this.content,
+        placeholder: '输入正文，支持 Markdown...',
+        controller: this.contentController
+      })
         .width('100%')
         .layoutWeight(1)
         .padding({ left: 20, right: 20, top: 16, bottom: 24 })
@@ -579,10 +770,16 @@ export struct CreateTopicComposerSheet {
         .placeholderColor($r('app.color.on_surface_secondary'))
         .maxLength(30000)
         .copyOption(CopyOptions.LocalDevice)
+        .onFocus(() => {
+          this.closeEmojiPanel();
+        })
         .onChange((value: string) => {
           this.content = value;
           this.errorMessage = '';
           this.scheduleDraftSave();
+        })
+        .onTextSelectionChange((selectionStart: number, selectionEnd: number) => {
+          this.syncContentSelection(selectionStart, selectionEnd);
         })
     }
   }
@@ -855,7 +1052,11 @@ export struct CreateTopicComposerSheet {
             .padding({ left: 20, right: 20, top: 4, bottom: 8 })
         }
 
-        TextInput({ text: this.title, placeholder: '输入一个清晰的标题...' })
+        TextInput({
+          text: this.title,
+          placeholder: '输入一个清晰的标题...',
+          controller: this.titleController
+        })
           .width('100%')
           .margin({ left: 20, right: 20, top: 14 })
           .padding({ top: 8, bottom: 8 })
@@ -865,6 +1066,9 @@ export struct CreateTopicComposerSheet {
           .fontColor($r('app.color.on_surface'))
           .placeholderColor($r('app.color.on_surface_secondary'))
           .maxLength(200)
+          .onFocus(() => {
+            this.closeEmojiPanel();
+          })
           .onChange((value: string) => {
             this.title = value;
             this.errorMessage = '';
@@ -900,15 +1104,36 @@ export struct CreateTopicComposerSheet {
       .height('100%')
       .backgroundColor($r('app.color.surface'))
 
+      if (this.isEmojiPanelVisible && !this.isPreview) {
+        Column() {
+          ComposerEmojiStickerPanel({
+            panelHeight: this.emojiPanelHeight,
+            onSelectEmoji: (emoji: Emoji) => {
+              this.insertEmoji(emoji);
+            },
+            onSelectSticker: (markdown: string) => {
+              this.insertSticker(markdown);
+            }
+          })
+        }
+        .width('100%')
+        .margin({ bottom: this.getToolbarHeight() })
+        .backgroundColor($r('app.color.surface'))
+      }
+
       Column() {
         MarkdownComposerToolbar({
           isPreview: this.isPreview,
           showPreviewButton: true,
+          isEmojiActive: this.isEmojiPanelVisible,
+          isImageUploading: this.isImageUploading,
+          imageUploadProgressLabel: this.imageUploadProgressLabel,
           onInsertEmoji: () => {
-            this.applyContentTransform(MarkdownComposerUtils.appendEmoji);
+            this.toggleEmojiPanel();
           },
           onInsertImage: () => {
-            this.applyContentTransform(MarkdownComposerUtils.insertImagePlaceholder);
+            this.pickAndUploadImages().catch((_: Object) => {
+            });
           },
           onInsertHeading: () => {
             this.applyContentTransform(MarkdownComposerUtils.insertHeading);
@@ -924,6 +1149,10 @@ export struct CreateTopicComposerSheet {
           },
           onTogglePreview: () => {
             this.isPreview = !this.isPreview;
+            if (this.isPreview) {
+              this.stopInputEditing();
+              this.closeEmojiPanel();
+            }
           }
         })
       }

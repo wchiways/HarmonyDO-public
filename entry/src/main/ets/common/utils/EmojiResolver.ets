@@ -1,5 +1,10 @@
 import { UrlUtils } from './UrlUtils';
 
+export class CustomEmojiEntry {
+  name: string = '';
+  url: string = '';
+}
+
 /**
  * Emoji / Flair URL 解析（对齐 FluxDO）
  *
@@ -181,5 +186,20 @@ export class EmojiResolver {
       return EmojiResolver.resolveEmojiUrl(raw);
     }
     return '';
+  }
+
+  static getCustomEmojiEntries(): CustomEmojiEntry[] {
+    const entries: CustomEmojiEntry[] = [];
+    const keys: string[] = Array.from(EmojiResolver.customEmojiMap.keys());
+    keys.sort((a: string, b: string): number => a.localeCompare(b));
+    for (let i = 0; i < keys.length; i++) {
+      const name: string = keys[i];
+      const url: string = EmojiResolver.customEmojiMap.get(name) as string;
+      const item: CustomEmojiEntry = new CustomEmojiEntry();
+      item.name = name;
+      item.url = url;
+      entries.push(item);
+    }
+    return entries;
   }
 }
