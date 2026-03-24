@@ -6,6 +6,7 @@ import { ToastService } from '../../common/utils/ToastService';
 import { WindowManager } from '../../common/utils/WindowManager';
 import { ApiClient } from '../../services/network/ApiClient';
 import { AuthService } from '../../services/auth/AuthService';
+import { NotificationTrackingService } from '../../services/messagebus/NotificationTrackingService';
 import { LoadingSpinner } from './LoadingSpinner';
 import { SmartAvatar } from './SmartAvatar';
 
@@ -46,6 +47,10 @@ export struct NotificationQuickPanel {
         return;
       }
       this.notifications = response.notifications;
+      NotificationTrackingService.getInstance().syncStateFromNotificationPreview(
+        response.notifications,
+        response.seenNotificationId
+      );
     } catch (err) {
       if (requestId === this.loadRequestId) {
         this.errorMessage = this.normalizeErrorMessage(err);
@@ -68,6 +73,7 @@ export struct NotificationQuickPanel {
     currentUser.allUnreadNotificationsCount = Math.max(0, nextCount);
     auth.setCurrentUser(currentUser, true);
     ApiClient.getInstance().setCachedCurrentUser(currentUser);
+    NotificationTrackingService.getInstance().syncStateFromCurrentUser(currentUser, true);
   }
 
   private markLocalNotificationRead(notificationId: number): void {

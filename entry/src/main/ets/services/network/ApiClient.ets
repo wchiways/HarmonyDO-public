@@ -1,7 +1,6 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { CfGuardOptions, HttpClient, HttpMultipartFilePart, HttpTextResponse } from './HttpClient';
 import { ApiConstants } from '../../common/constants/ApiConstants';
-import { AppConstants } from '../../common/constants/AppConstants';
 import { Topic, TopicListResponse, Tag } from '../../models/Topic';
 import { Category, SiteResponse } from '../../models/Category';
 import { TagSearchResult, TagInfo } from '../../models/TagSearchResult';
@@ -20,7 +19,6 @@ import { EmojiResolver } from '../../common/utils/EmojiResolver';
 import { ComposerUploadUrlCache } from '../../common/utils/ComposerUploadUrlCache';
 
 const TAG: string = 'ApiClient';
-const MOCK_PAGE_SIZE: number = 30;
 const CURRENT_USER_CACHE_TTL_MS: number = 5000;
 const CURRENT_USER_RATE_LIMIT_COOLDOWN_MS: number = 8000;
 
@@ -32,34 +30,6 @@ export class PostEnqueuedError extends Error {
     this.pendingCount = pendingCount;
   }
 }
-
-const MOCK_TAG_NAMES: string[] = [
-  'harmonyos',
-  'flutter',
-  'bug',
-  'resource',
-  'ai',
-  'tips',
-  'help',
-  'showcase',
-  'release',
-  'design'
-];
-
-const MOCK_CATEGORY_IDS: number[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-
-const MOCK_TITLES: string[] = [
-  '鸿蒙 ArkUI 组件复刻进度：欢迎对比指出细节差异',
-  '【UI】TopicList Header 两段折叠怎么实现更丝滑？',
-  '求助：ArkTS 的 List onScrollFrameBegin 如何正确使用？',
-  '分享：我做了一个离线 Mock 数据模式，UI 验收终于不卡了',
-  '置顶：新版本更新说明（Mock）',
-  '热门：这个话题为什么点赞这么多？',
-  '已解决：关于 canHaveAnswer / acceptedAnswer 的 UI 表达',
-  '闭帖：请先阅读发帖规范再提问',
-  '资源：网盘合集（示例）',
-  '教程：从 Flutter 到 ArkUI 的布局映射速查表'
-];
 
 /**
  * Discourse API 客户端
@@ -79,12 +49,6 @@ export class ApiClient {
   private currentUserInFlight: Promise<User | null> | null = null;
   private currentUserRateLimitedUntil: number = 0;
   private currentUserSessionVersion: number = 0;
-
-  // -------------------- Mock Data --------------------
-  private static mockInited: boolean = false;
-  private static mockCategories: Category[] = [];
-  private static mockTopics: Topic[] = [];
-  private static mockTopicDetailJson: Map<number, string> = new Map();
 
   private constructor() {
     this.http = new HttpClient();
@@ -188,315 +152,6 @@ export class ApiClient {
     this.clearCurrentUserCacheState();
   }
 
-  private static ensureMockData(): void {
-    if (ApiClient.mockInited) return;
-    ApiClient.mockInited = true;
-
-    // 1) 分类
-    const categories: Category[] = [];
-    categories.push(ApiClient.createCategory(1, '开发调优', 'dev-opt', '26A69A', null));
-    categories.push(ApiClient.createCategory(2, '国产替代', 'china-alt', '43A047', null));
-    categories.push(ApiClient.createCategory(3, '资源荟萃', 'resources', 'FF8F00', null));
-    categories.push(ApiClient.createCategory(4, '文档共建', 'docs', 'E53935', null));
-    categories.push(ApiClient.createCategory(5, '非我莫属', 'who', '42A5F5', null));
-    categories.push(ApiClient.createCategory(6, '读书成诗', 'reading', '26C6DA', null));
-    categories.push(ApiClient.createCategory(7, '前沿快讯', 'news', 'F4511E', null));
-    categories.push(ApiClient.createCategory(8, '网络记忆', 'memory', '546E7A', null));
-    categories.push(ApiClient.createCategory(9, '福利羊毛', 'welfare', 'D81B60', null));
-    categories.push(ApiClient.createCategory(10, '搞七捻三', 'misc', '8E24AA', null));
-    categories.push(ApiClient.createCategory(11, '虫洞广场', 'wormhole', '5E35B1', null));
-    categories.push(ApiClient.createCategory(12, '运营反馈', 'ops', '90A4AE', null));
-
-    // 子分类：用于展示“▼”菜单
-    categories.push(ApiClient.createCategory(31, '网盘资源', 'cloud', 'FFB300', 3));
-    categories.push(ApiClient.createCategory(121, '公告', 'announcements', 'E53935', 12));
-    categories.push(ApiClient.createCategory(122, '活动', 'events', '43A047', 12));
-    categories.push(ApiClient.createCategory(123, '悬赏', 'bounty', 'FF8F00', 12));
-
-    ApiClient.mockCategories = categories;
-
-    // 2) 话题列表
-    const topics: Topic[] = [];
-    for (let i = 0; i < 60; i++) {
-      const t = new Topic();
-      t.id = 10000 + i;
-      t.title = MOCK_TITLES[i % MOCK_TITLES.length] + (i % 2 === 0 ? '' : ` #${i}`);
-      t.slug = `topic-${t.id}`;
-
-      const catId: number = MOCK_CATEGORY_IDS[i % MOCK_CATEGORY_IDS.length];
-      t.categoryId = catId.toString();
-
-      t.pinned = i < 2;
-      t.closed = i === 7 || (i % 17 === 0);
-
-      // 回复与点赞
-      const basePosts: number = 1 + (i % 40);
-      t.postsCount = basePosts + (i % 3 === 0 ? 20 : 0);
-      t.replyCount = Math.max(0, t.postsCount - 1);
-      t.likeCount = (i % 6 === 0)
-        ? (t.postsCount * 2 + 30)
-        : (i % 4 === 0 ? 12 + (i % 20) : (i % 3 === 0 ? 3 : 0));
-      t.views = 100 + i * 37;
-
-      // 时间
-      t.createdAt = ApiClient.dateMinutesAgo(60 * 24 * (i % 7) + i);
-      t.lastPostedAt = ApiClient.dateMinutesAgo(5 * i + (i % 9) * 3);
-      t.lastPosterUsername = i % 2 === 0 ? 'alice' : (i % 3 === 0 ? 'bob' : 'charlie');
-
-      // 已读/未读状态
-      t.unseen = i % 5 === 0;
-      t.unread = t.unseen ? 0 : (i % 7 === 0 ? (i % 6) + 1 : 0);
-      t.lastReadPostNumber = (!t.unseen && t.unread === 0 && i % 4 === 0) ? (t.postsCount - 1) : 0;
-      t.highestPostNumber = t.postsCount;
-
-      // 已解决/可回答
-      t.canHaveAnswer = i % 4 === 0;
-      t.hasAcceptedAnswer = (i % 9 === 0);
-
-      // tags
-      t.tags = ApiClient.makeTags(i);
-
-      topics.push(t);
-    }
-    ApiClient.mockTopics = topics;
-
-    // 3) 话题详情 JSON
-    for (let i = 0; i < 10; i++) {
-      const topic: Topic = topics[i];
-      ApiClient.mockTopicDetailJson.set(topic.id, ApiClient.buildMockTopicDetailJson(topic));
-    }
-  }
-
-  private static createCategory(id: number, name: string, slug: string, color: string, parentId: number | null): Category {
-    const c = new Category();
-    c.id = id;
-    c.name = name;
-    c.slug = slug;
-    c.color = color;
-    c.textColor = 'FFFFFF';
-    c.parentCategoryId = parentId;
-    c.readRestricted = false;
-    c.uploadedLogo = null;
-    c.icon = null;
-    return c;
-  }
-
-  private static makeTags(seed: number): Tag[] {
-    const tags: Tag[] = [];
-    const count: number = 1 + (seed % 3);
-    for (let i = 0; i < count; i++) {
-      const t = new Tag();
-      const idx: number = (seed + i * 3) % MOCK_TAG_NAMES.length;
-      t.name = MOCK_TAG_NAMES[idx];
-      tags.push(t);
-    }
-    return tags;
-  }
-
-  private static dateMinutesAgo(mins: number): Date {
-    return new Date(Date.now() - mins * 60 * 1000);
-  }
-
-  private static findMockTopicById(id: number): Topic | null {
-    for (let i = 0; i < ApiClient.mockTopics.length; i++) {
-      const t: Topic = ApiClient.mockTopics[i];
-      if (t.id === id) return t;
-    }
-    return null;
-  }
-
-  private static buildMockTopicDetailJson(topic: Topic): string {
-    const topicId: number = topic.id;
-    const title: string = topic.title;
-    const hasAccepted: boolean = topic.hasAcceptedAnswer;
-    const acceptedAnswerPostNumber: number = hasAccepted ? 3 : 0;
-    const closed: boolean = topic.closed;
-
-    const now: Date = new Date();
-    const createdAtIso: string = topic.createdAt !== null ? (topic.createdAt as Date).toISOString() : now.toISOString();
-    const lastPostedAtIso: string = topic.lastPostedAt !== null ? (topic.lastPostedAt as Date).toISOString() : createdAtIso;
-
-    const catParsed: number = parseInt(topic.categoryId);
-    const categoryId: number = isNaN(catParsed) ? 1 : catParsed;
-
-    const tags: string[] = [];
-    for (let i = 0; i < topic.tags.length; i++) {
-      const t: Tag = topic.tags[i];
-      if (t.name.length > 0) {
-        tags.push(t.name);
-      }
-    }
-
-    const posts: Object[] = [];
-
-    // small_action（对齐安卓：仅在 closed 等真实系统操作时才会出现；不要用 pinned.enabled 造假）
-    if (closed) {
-      const smallAction: Record<string, Object> = {};
-      smallAction['id'] = topicId * 10 + 1;
-      smallAction['username'] = 'system';
-      smallAction['avatar_template'] = '/letter_avatar_proxy/v4/letter/s/000000/{size}.png';
-      smallAction['cooked'] = '';
-      smallAction['post_number'] = 0;
-      smallAction['post_type'] = 3;
-      smallAction['created_at'] = ApiClient.isoMinutesAgo(now, 600);
-      smallAction['like_count'] = 0;
-      smallAction['reply_count'] = 0;
-      smallAction['action_code'] = 'closed.enabled';
-      smallAction['accepted_answer'] = false;
-      posts.push(smallAction);
-    }
-
-    // first post
-    const firstPost: Record<string, Object> = {};
-    firstPost['id'] = topicId * 10 + 2;
-    firstPost['name'] = 'Alice';
-    firstPost['username'] = 'alice';
-    firstPost['avatar_template'] = '/letter_avatar_proxy/v4/letter/a/3366cc/{size}.png';
-    firstPost['cooked'] =
-      `<p>这里是 <b>Mock</b> 首贴内容，用于离线验收 UI。</p>\n` +
-      `<blockquote>引用块示例：对齐安卓端样式</blockquote>\n` +
-      `<pre><code class=\"language-arkts\">@ComponentV2\nstruct Demo {\n  build() { Text('Hello') }\n}</code></pre>\n` +
-      `<p>图片位：<img src=\"mock://image\" /></p>`;
-    firstPost['post_number'] = 1;
-    firstPost['post_type'] = 1;
-    firstPost['created_at'] = ApiClient.isoMinutesAgo(now, 580);
-    firstPost['like_count'] = 12;
-    // 对齐安卓：首贴不显示“回复数折叠按钮”，因此这里不造 reply_count
-    firstPost['reply_count'] = 0;
-    firstPost['actions_summary'] = ApiClient.buildLikeActionSummary(true);
-    firstPost['accepted_answer'] = false;
-    posts.push(firstPost);
-
-    // reply 1
-    const reply1: Record<string, Object> = {};
-    reply1['id'] = topicId * 10 + 3;
-    reply1['name'] = 'Bob';
-    reply1['username'] = 'bob';
-    reply1['avatar_template'] = '/letter_avatar_proxy/v4/letter/b/00acc1/{size}.png';
-    reply1['cooked'] = `<p>回复示例：<code>onScrollFrameBegin</code> 可以用于消费 offset 以实现两段折叠。</p>`;
-    reply1['post_number'] = 2;
-    reply1['post_type'] = 1;
-    reply1['created_at'] = ApiClient.isoMinutesAgo(now, 520);
-    reply1['like_count'] = 3;
-    // 用于离线验收“楼层回复折叠”：#2 有 1 条回复（来自 #4）
-    reply1['reply_count'] = 1;
-    reply1['actions_summary'] = ApiClient.buildLikeActionSummary(false);
-    reply1['accepted_answer'] = false;
-    posts.push(reply1);
-
-    // reply 2
-    const reply2: Record<string, Object> = {};
-    reply2['id'] = topicId * 10 + 4;
-    reply2['name'] = 'Charlie';
-    reply2['username'] = 'charlie';
-    reply2['avatar_template'] = '/letter_avatar_proxy/v4/letter/c/43a047/{size}.png';
-    reply2['cooked'] = `<p>再来一个短回复，测试底部操作行布局与分割线。</p>`;
-    reply2['post_number'] = 3;
-    reply2['post_type'] = 1;
-    reply2['created_at'] = ApiClient.isoMinutesAgo(now, 480);
-    reply2['like_count'] = 0;
-    reply2['reply_count'] = 0;
-    reply2['accepted_answer'] = hasAccepted;
-    posts.push(reply2);
-
-    // reply 3（楼主回帖：用于验收“主”标识 + reply_to 关系 + 楼层回复折叠展示）
-    const reply3: Record<string, Object> = {};
-    reply3['id'] = topicId * 10 + 5;
-    reply3['name'] = 'Alice';
-    reply3['username'] = 'alice';
-    reply3['avatar_template'] = '/letter_avatar_proxy/v4/letter/a/3366cc/{size}.png';
-    reply3['cooked'] = `<p>楼主回帖示例：这里会显示 <b>主</b> 标识，并且作为对 #2 的回复用于测试折叠回复列表。</p>`;
-    reply3['post_number'] = 4;
-    reply3['post_type'] = 1;
-    reply3['created_at'] = ApiClient.isoMinutesAgo(now, 470);
-    reply3['like_count'] = 1;
-    reply3['reply_count'] = 0;
-    reply3['reply_to_post_number'] = 2;
-    const replyToUser: Record<string, Object> = {};
-    replyToUser['username'] = 'bob';
-    replyToUser['name'] = 'Bob';
-    replyToUser['avatar_template'] = '/letter_avatar_proxy/v4/letter/b/00acc1/{size}.png';
-    reply3['reply_to_user'] = replyToUser;
-    reply3['accepted_answer'] = false;
-    posts.push(reply3);
-
-    const json: Record<string, Object> = {};
-    json['id'] = topicId;
-    json['title'] = title;
-    // 对齐安卓：reply_count 与 posts_count 要与帖子流一致（离线验收以 UI 为主，避免出现 1/2 但实际列表有 4 项的错觉）
-    json['posts_count'] = 4;
-    json['reply_count'] = 3;
-    json['views'] = topic.views;
-    json['category_id'] = categoryId;
-    json['tags'] = tags;
-    json['created_at'] = createdAtIso;
-    json['last_posted_at'] = lastPostedAtIso;
-    json['closed'] = closed;
-    json['has_accepted_answer'] = hasAccepted;
-    json['bookmarked'] = false;
-    if (acceptedAnswerPostNumber > 0) {
-      const acceptedAnswer: Record<string, Object> = {};
-      acceptedAnswer['post_number'] = acceptedAnswerPostNumber;
-      json['accepted_answer'] = acceptedAnswer;
-    }
-
-    const postStream: Record<string, Object> = {};
-    postStream['posts'] = posts;
-    json['post_stream'] = postStream;
-
-    return JSON.stringify(json);
-  }
-
-  private static isoMinutesAgo(base: Date, mins: number): string {
-    return new Date(base.getTime() - mins * 60 * 1000).toISOString();
-  }
-
-  private static buildLikeActionSummary(acted: boolean): Object[] {
-    const list: Object[] = [];
-    const action: Record<string, Object> = {};
-    action['id'] = 2;
-    action['acted'] = acted;
-    list.push(action);
-    return list;
-  }
-
-  private static createMockEmoji(name: string, group: string, aliases: string[] = []): Emoji {
-    const emoji: Emoji = new Emoji();
-    emoji.name = name;
-    emoji.group = group;
-    emoji.searchAliases = aliases;
-    return emoji;
-  }
-
-  private static buildMockEmojiGroups(): Map<string, Emoji[]> {
-    const groups: Map<string, Emoji[]> = new Map();
-    groups.set('smileys_&_emotion', [
-      ApiClient.createMockEmoji('smile', 'smileys_&_emotion', ['happy', '开心']),
-      ApiClient.createMockEmoji('grinning', 'smileys_&_emotion', ['laugh', '笑']),
-      ApiClient.createMockEmoji('joy', 'smileys_&_emotion', ['tears', '喜极而泣']),
-      ApiClient.createMockEmoji('heart_eyes', 'smileys_&_emotion', ['love', '喜欢']),
-      ApiClient.createMockEmoji('thinking', 'smileys_&_emotion', ['hmm', '思考']),
-      ApiClient.createMockEmoji('sob', 'smileys_&_emotion', ['cry', '哭']),
-      ApiClient.createMockEmoji('rage', 'smileys_&_emotion', ['mad', '生气']),
-      ApiClient.createMockEmoji('sparkles', 'smileys_&_emotion', ['stars', '闪亮'])
-    ]);
-    groups.set('people_&_body', [
-      ApiClient.createMockEmoji('wave', 'people_&_body', ['hello', '招手']),
-      ApiClient.createMockEmoji('thumbsup', 'people_&_body', ['good', '赞']),
-      ApiClient.createMockEmoji('clap', 'people_&_body', ['applause', '鼓掌']),
-      ApiClient.createMockEmoji('pray', 'people_&_body', ['thanks', '感谢']),
-      ApiClient.createMockEmoji('muscle', 'people_&_body', ['strong', '加油'])
-    ]);
-    groups.set('symbols', [
-      ApiClient.createMockEmoji('heart', 'symbols', ['love', '爱心']),
-      ApiClient.createMockEmoji('fire', 'symbols', ['hot', '火']),
-      ApiClient.createMockEmoji('100', 'symbols', ['full', '满分']),
-      ApiClient.createMockEmoji('warning', 'symbols', ['alert', '注意']),
-      ApiClient.createMockEmoji('rocket', 'symbols', ['launch', '起飞'])
-    ]);
-    return groups;
-  }
-
   /**
    * 获取单例
    */
@@ -530,27 +185,12 @@ export class ApiClient {
 
   /**
    * 按 topic_ids 获取话题（用于“查看新话题”banner 增量插入）
-   * 对齐 Flutter：/latest.json?topic_ids=1,2,3
+   * 请求格式：/latest.json?topic_ids=1,2,3
    */
   async getTopicsByIds(topicIds: number[]): Promise<TopicListResponse> {
     if (topicIds.length === 0) {
       return new TopicListResponse();
     }
-    if (AppConstants.USE_MOCK_DATA) {
-      ApiClient.ensureMockData();
-      // Mock：直接从本地 mockTopics 中挑选并返回（不保证顺序与线上一致，仅用于离线展示）
-      const selected: Topic[] = [];
-      for (let i = 0; i < topicIds.length; i++) {
-        const t: Topic | null = ApiClient.findMockTopicById(topicIds[i]);
-        if (t !== null) selected.push(t as Topic);
-      }
-      const resp: TopicListResponse = new TopicListResponse();
-      resp.topics = selected;
-      resp.moreTopicsUrl = null;
-      resp.perPage = MOCK_PAGE_SIZE;
-      return resp;
-    }
-
     const params: Record<string, Object> = {};
     params['topic_ids'] = topicIds.join(',');
     const result: string = await this.http.get(ApiConstants.TOPIC_LIST, params);
@@ -560,7 +200,7 @@ export class ApiClient {
 
   /**
    * 获取话题列表（支持分类/标签/排序/period）
-   * 对齐 Flutter: DiscourseService.getFilteredTopics
+   * 支持分类、标签、排序和 period 组合查询
    */
   async getFilteredTopics(
     filter: string,
@@ -576,14 +216,8 @@ export class ApiClient {
     readTimeoutMs: number | null = null,
     guardOptions: CfGuardOptions | null = null
   ): Promise<TopicListResponse> {
-    if (AppConstants.USE_MOCK_DATA) {
-      ApiClient.ensureMockData();
-      const id: number | null = categoryId !== null ? categoryId : null;
-      return ApiClient.mockGetTopicList(id, page);
-    }
-
     // 构造 path（分类优先，其次纯标签，否则全站）
-    // 对齐 Flutter/安卓：
+    // path 规则：
     // - 热门（无分类/标签）=> /hot.json
     // - 热门（有分类或标签）=> /.../top.json?period=weekly
     // - 排行榜（无分类/标签）=> /top.json，不传 order
@@ -651,7 +285,7 @@ export class ApiClient {
 
   /**
    * 搜索标签（用于标签选择弹层）
-   * 对齐 Flutter: /tags/filter/search?q=xxx&limit=8&selected_tags=...
+   * 请求格式：/tags/filter/search?q=xxx&limit=8&selected_tags=...
    */
   async searchTags(
     query: string = '',
@@ -660,25 +294,6 @@ export class ApiClient {
     limit: number = 8,
     filterForInput: boolean = false
   ): Promise<TagSearchResult> {
-    if (AppConstants.USE_MOCK_DATA) {
-      const r: TagSearchResult = new TagSearchResult();
-      const q: string = query.trim().toLowerCase();
-      const list: TagInfo[] = [];
-      for (let i = 0; i < MOCK_TAG_NAMES.length; i++) {
-        const name: string = MOCK_TAG_NAMES[i];
-        if (q.length > 0 && name.toLowerCase().indexOf(q) < 0) continue;
-        const info: TagInfo = new TagInfo();
-        info.name = name;
-        info.text = name;
-        info.count = 0;
-        list.push(info);
-        if (limit > 0 && list.length >= limit) break;
-      }
-      r.results = list;
-      r.requiredTagGroup = null;
-      return r;
-    }
-
     const params: Record<string, Object> = {};
     params['q'] = query;
     // Discourse 端对 limit 有上限保护：limit 过大可能直接返回 400（真机反馈）
@@ -693,7 +308,7 @@ export class ApiClient {
       params['filterForInput'] = 'true';
     }
     if (selectedTags !== null && selectedTags.length > 0) {
-      // 对齐 Flutter：selected_tags=tag1&selected_tags=tag2...
+      // selected_tags 使用重复 query 参数：selected_tags=tag1&selected_tags=tag2...
       params['selected_tags'] = selectedTags;
     }
 
@@ -727,13 +342,6 @@ export class ApiClient {
    * 获取站点信息（含分类）
    */
   async getSiteInfo(): Promise<SiteResponse> {
-    if (AppConstants.USE_MOCK_DATA) {
-      ApiClient.ensureMockData();
-      const response = new SiteResponse();
-      response.categories = ApiClient.mockCategories;
-      return response;
-    }
-
     if (this.siteInfoCache !== null) {
       return this.siteInfoCache;
     }
@@ -757,9 +365,6 @@ export class ApiClient {
   }
 
   async getEmojis(): Promise<Map<string, Emoji[]>> {
-    if (AppConstants.USE_MOCK_DATA) {
-      return ApiClient.buildMockEmojiGroups();
-    }
     if (this.emojiGroupsCache !== null) {
       return this.emojiGroupsCache;
     }
@@ -873,30 +478,6 @@ export class ApiClient {
     filter: string = '',
     usernameFilters: string = ''
   ): Promise<string> {
-    if (AppConstants.USE_MOCK_DATA) {
-      ApiClient.ensureMockData();
-      if (ApiClient.mockTopicDetailJson.has(id)) {
-        return ApiClient.mockTopicDetailJson.get(id) as string;
-      }
-      // fallback：动态生成（尽量复用列表中的 meta 字段，保证离线验收一致）
-      const found: Topic | null = ApiClient.findMockTopicById(id);
-      if (found !== null) {
-        return ApiClient.buildMockTopicDetailJson(found as Topic);
-      }
-      const fallback: Topic = new Topic();
-      fallback.id = id;
-      fallback.title = `离线话题 #${id}`;
-      fallback.categoryId = '1';
-      fallback.postsCount = 24;
-      fallback.replyCount = 23;
-      fallback.views = 174;
-      fallback.createdAt = new Date();
-      fallback.lastPostedAt = fallback.createdAt;
-      fallback.tags = ApiClient.makeTags(id);
-      fallback.closed = false;
-      fallback.hasAcceptedAnswer = false;
-      return ApiClient.buildMockTopicDetailJson(fallback);
-    }
     const params: Record<string, Object> = {};
     const f: string = filter.trim();
     const uf: string = usernameFilters.trim();
@@ -911,9 +492,6 @@ export class ApiClient {
    * 批量获取帖子内容（/t/{id}/posts.json?post_ids[]=...）
    */
   async getTopicPosts(topicId: number, postIds: number[]): Promise<Post[]> {
-    if (AppConstants.USE_MOCK_DATA) {
-      return [];
-    }
     if (postIds.length === 0) {
       return [];
     }
@@ -949,12 +527,9 @@ export class ApiClient {
   /**
    * 获取帖子 raw（/posts/{id}.json → raw）
    *
-   * 失败时返回空字符串（对齐安卓导出兜底策略）
+   * 失败时返回空字符串，供导出流程兜底
    */
   async getPostRaw(postId: number): Promise<string> {
-    if (AppConstants.USE_MOCK_DATA) {
-      return '';
-    }
     if (postId <= 0) {
       return '';
     }
@@ -986,9 +561,6 @@ export class ApiClient {
    * 获取帖子的回复列表（/posts/{id}/replies?after=1）
    */
   async getPostReplies(postId: number, after: number = 1): Promise<Post[]> {
-    if (AppConstants.USE_MOCK_DATA) {
-      return [];
-    }
     if (postId <= 0) {
       return [];
     }
@@ -1014,20 +586,6 @@ export class ApiClient {
    * 创建回复
    */
   async createReply(topicId: number, raw: string, replyToPostNumber: number = 0): Promise<Post> {
-    if (AppConstants.USE_MOCK_DATA) {
-      const post: Post = new Post();
-      post.id = Date.now();
-      post.username = 'you';
-      post.name = 'You';
-      post.cooked = raw;
-      post.postNumber = 1;
-      post.postType = 1;
-      post.createdAt = new Date();
-      post.updatedAt = new Date();
-      post.replyToPostNumber = replyToPostNumber;
-      return post;
-    }
-
     const form: Record<string, Object> = {};
     form['topic_id'] = topicId.toString();
     form['raw'] = raw;
@@ -1091,16 +649,6 @@ export class ApiClient {
     const normalizedMimeType: string = mimeType !== undefined && mimeType !== null && mimeType.trim().length > 0
       ? mimeType.trim()
       : 'image/jpeg';
-
-    if (AppConstants.USE_MOCK_DATA) {
-      const mock: UploadedImage = new UploadedImage();
-      mock.shortUrl = `/uploads/mock/${Date.now()}/${encodeURIComponent(normalizedFileName)}`;
-      mock.url = mock.shortUrl;
-      mock.originalFilename = normalizedFileName;
-      mock.width = fallbackWidth;
-      mock.height = fallbackHeight;
-      return mock;
-    }
 
     const clientId: string = MessageBusService.getInstance().getClientId();
     const form: Record<string, Object> = {};
@@ -1172,9 +720,6 @@ export class ApiClient {
    * 创建私信
    */
   async createPrivateMessage(targetUsernames: string[], title: string, raw: string): Promise<number> {
-    if (AppConstants.USE_MOCK_DATA) {
-      return Date.now();
-    }
     if (targetUsernames.length === 0) {
       throw new Error('缺少收件人');
     }
@@ -1245,9 +790,6 @@ export class ApiClient {
    * 创建新话题
    */
   async createTopic(title: string, raw: string, categoryId: number, tags: string[] | null = null): Promise<number> {
-    if (AppConstants.USE_MOCK_DATA) {
-      return Date.now();
-    }
     const normalizedTitle: string = title.trim();
     const normalizedRaw: string = raw.trim();
     if (normalizedTitle.length === 0) {
@@ -1323,9 +865,6 @@ export class ApiClient {
    * 获取指定草稿
    */
   async getDraft(draftKey: string): Promise<Draft | null> {
-    if (AppConstants.USE_MOCK_DATA) {
-      return null;
-    }
     if (draftKey.length === 0) {
       return null;
     }
@@ -1353,9 +892,6 @@ export class ApiClient {
   }
 
   async getDrafts(offset: number = 0, limit: number = 20): Promise<DraftListResponse> {
-    if (AppConstants.USE_MOCK_DATA) {
-      return new DraftListResponse();
-    }
     const params: Record<string, Object> = {};
     if (offset > 0) {
       params['offset'] = offset.toString();
@@ -1372,9 +908,6 @@ export class ApiClient {
    * 保存草稿
    */
   async saveDraft(draftKey: string, data: DraftData, sequence: number = 0): Promise<number> {
-    if (AppConstants.USE_MOCK_DATA) {
-      return sequence + 1;
-    }
     const form: Record<string, Object> = {};
     form['draft_key'] = draftKey;
     form['data'] = data.toJsonString();
@@ -1392,9 +925,6 @@ export class ApiClient {
    * 删除草稿
    */
   async deleteDraft(draftKey: string, sequence: number = 0): Promise<void> {
-    if (AppConstants.USE_MOCK_DATA) {
-      return;
-    }
     if (draftKey.length === 0) return;
 
     try {
@@ -1414,9 +944,6 @@ export class ApiClient {
    * 投票
    */
   async votePoll(postId: number, pollName: string, options: string[]): Promise<Poll | null> {
-    if (AppConstants.USE_MOCK_DATA) {
-      return null;
-    }
     const form: Record<string, Object> = {};
     form['post_id'] = postId.toString();
     form['poll_name'] = pollName;
@@ -1434,9 +961,6 @@ export class ApiClient {
    * 撤销投票
    */
   async removeVote(postId: number, pollName: string): Promise<Poll | null> {
-    if (AppConstants.USE_MOCK_DATA) {
-      return null;
-    }
     const form: Record<string, Object> = {};
     form['post_id'] = postId.toString();
     form['poll_name'] = pollName;
@@ -1453,9 +977,6 @@ export class ApiClient {
    * 搜索
    */
   async search(query: string, page: number = 1, typeFilter: string = ''): Promise<SearchResult> {
-    if (AppConstants.USE_MOCK_DATA) {
-      return SearchResult.empty();
-    }
     const params: Record<string, Object> = {};
     params['q'] = query;
     params['page'] = page.toString();
@@ -1469,14 +990,6 @@ export class ApiClient {
   }
 
   async getCurrentUser(): Promise<User | null> {
-    if (AppConstants.USE_MOCK_DATA) {
-      const u: User = new User();
-      u.username = 'alice';
-      u.name = 'Alice';
-      u.trustLevel = 2;
-      return u;
-    }
-
     if (this.hasFreshCurrentUserCache()) {
       return this.currentUserCache;
     }
@@ -1522,9 +1035,6 @@ export class ApiClient {
   }
 
   async getNotifications(offset: number = 0, limit: number = 60): Promise<NotificationListResponse> {
-    if (AppConstants.USE_MOCK_DATA) {
-      return new NotificationListResponse();
-    }
     const params: Record<string, Object> = {};
     if (limit > 0) {
       params['limit'] = limit.toString();
@@ -1538,14 +1048,11 @@ export class ApiClient {
   }
 
   async markAllNotificationsRead(): Promise<void> {
-    if (AppConstants.USE_MOCK_DATA) {
-      return;
-    }
     await this.http.put(ApiConstants.NOTIFICATIONS_MARK_READ);
   }
 
   async markNotificationRead(id: number): Promise<void> {
-    if (AppConstants.USE_MOCK_DATA || id <= 0) {
+    if (id <= 0) {
       return;
     }
     const form: Record<string, Object> = {};
@@ -1554,12 +1061,6 @@ export class ApiClient {
   }
 
   async getUserProfile(username: string): Promise<User> {
-    if (AppConstants.USE_MOCK_DATA) {
-      const u = new User();
-      u.username = username;
-      u.name = username;
-      return u;
-    }
     const path: string = ApiConstants.userProfile(encodeURIComponent(username));
     const raw: string = await this.http.get(path);
     const json: Record<string, Object> = JSON.parse(raw) as Record<string, Object>;
@@ -1575,9 +1076,6 @@ export class ApiClient {
   }
 
   async getUserSummary(username: string): Promise<UserSummary> {
-    if (AppConstants.USE_MOCK_DATA) {
-      return new UserSummary();
-    }
     const path: string = ApiConstants.userSummary(encodeURIComponent(username));
     const raw: string = await this.http.get(path);
     const json: Record<string, Object> = JSON.parse(raw) as Record<string, Object>;
@@ -1585,9 +1083,6 @@ export class ApiClient {
   }
 
   async getBrowsingHistory(page: number = 0): Promise<TopicListResponse> {
-    if (AppConstants.USE_MOCK_DATA) {
-      return ApiClient.mockGetTopicList(null, page);
-    }
     let params: Record<string, Object> | null = null;
     if (page > 0) {
       const query: Record<string, Object> = {};
@@ -1600,9 +1095,6 @@ export class ApiClient {
   }
 
   async getUserBookmarks(username: string, page: number = 0): Promise<TopicListResponse> {
-    if (AppConstants.USE_MOCK_DATA) {
-      return ApiClient.mockGetTopicList(null, page);
-    }
     let params: Record<string, Object> | null = null;
     if (page > 0) {
       const query: Record<string, Object> = {};
@@ -1619,9 +1111,6 @@ export class ApiClient {
     if (postId <= 0) {
       throw new Error('无效的帖子ID');
     }
-    if (AppConstants.USE_MOCK_DATA) {
-      return;
-    }
     const form: Record<string, Object> = {};
     form['id'] = postId.toString();
     form['post_action_type_id'] = ApiClient.LIKE_POST_ACTION_TYPE_ID.toString();
@@ -1632,9 +1121,6 @@ export class ApiClient {
   async unlikePost(postId: number): Promise<void> {
     if (postId <= 0) {
       throw new Error('无效的帖子ID');
-    }
-    if (AppConstants.USE_MOCK_DATA) {
-      return;
     }
     await this.http.delete(ApiConstants.postAction(postId, ApiClient.LIKE_POST_ACTION_TYPE_ID));
   }
@@ -1647,10 +1133,6 @@ export class ApiClient {
     if (normalizedReactionId.length === 0) {
       throw new Error('无效的回应类型');
     }
-    if (AppConstants.USE_MOCK_DATA) {
-      return new PostReactionState();
-    }
-
     const resp: HttpTextResponse = await this.http.putDetailed(ApiConstants.togglePostReaction(postId, normalizedReactionId));
     if (resp.code < 200 || resp.code >= 300) {
       if (resp.code === 429) {
@@ -1739,9 +1221,6 @@ export class ApiClient {
     if (topicId <= 0) {
       throw new Error('无效的话题ID');
     }
-    if (AppConstants.USE_MOCK_DATA) {
-      return topicId * 1000 + 1;
-    }
     const form: Record<string, Object> = {};
     form['bookmarkable_id'] = topicId.toString();
     form['bookmarkable_type'] = 'Topic';
@@ -1767,9 +1246,6 @@ export class ApiClient {
     if (postId <= 0) {
       throw new Error('无效的帖子ID');
     }
-    if (AppConstants.USE_MOCK_DATA) {
-      return postId * 1000 + 1;
-    }
     const form: Record<string, Object> = {};
     form['bookmarkable_id'] = postId.toString();
     form['bookmarkable_type'] = 'Post';
@@ -1792,7 +1268,7 @@ export class ApiClient {
   }
 
   async updateBookmark(bookmarkId: number, name: string | null = null, reminderAt: Date | null = null): Promise<void> {
-    if (AppConstants.USE_MOCK_DATA || bookmarkId <= 0) {
+    if (bookmarkId <= 0) {
       return;
     }
     const body: Record<string, Object> = {};
@@ -1806,7 +1282,7 @@ export class ApiClient {
   }
 
   async clearBookmarkReminder(bookmarkId: number): Promise<void> {
-    if (AppConstants.USE_MOCK_DATA || bookmarkId <= 0) {
+    if (bookmarkId <= 0) {
       return;
     }
     const body: Record<string, Object> = {};
@@ -1818,16 +1294,13 @@ export class ApiClient {
   }
 
   async deleteBookmark(bookmarkId: number): Promise<void> {
-    if (AppConstants.USE_MOCK_DATA || bookmarkId <= 0) {
+    if (bookmarkId <= 0) {
       return;
     }
     await this.http.delete(ApiConstants.bookmark(bookmarkId));
   }
 
   async getUserCreatedTopics(username: string, page: number = 0): Promise<TopicListResponse> {
-    if (AppConstants.USE_MOCK_DATA) {
-      return ApiClient.mockGetTopicList(null, page);
-    }
     let params: Record<string, Object> | null = null;
     if (page > 0) {
       const query: Record<string, Object> = {};
@@ -1840,41 +1313,10 @@ export class ApiClient {
     return TopicListResponse.fromJson(json);
   }
 
-  private static mockGetTopicList(categoryId: number | null, page: number): TopicListResponse {
-    const list = new TopicListResponse();
-    list.perPage = MOCK_PAGE_SIZE;
-
-    let data: Topic[] = ApiClient.mockTopics;
-    if (categoryId !== null) {
-      const filtered: Topic[] = [];
-      for (let i = 0; i < data.length; i++) {
-        const t = data[i];
-        if (parseInt(t.categoryId) === categoryId) {
-          filtered.push(t);
-        }
-      }
-      data = filtered;
-    }
-
-    const start: number = Math.max(0, page) * MOCK_PAGE_SIZE;
-    const end: number = Math.min(data.length, start + MOCK_PAGE_SIZE);
-    const pageItems: Topic[] = [];
-    for (let i = start; i < end; i++) {
-      pageItems.push(data[i]);
-    }
-
-    list.topics = pageItems;
-    list.moreTopicsUrl = end < data.length ? '/mock/more' : null;
-    return list;
-  }
-
   /**
    * 获取用户动态（/user_actions.json）
    */
   async getUserActions(username: string, filter: string = '', offset: number = 0): Promise<UserActionResponse> {
-    if (AppConstants.USE_MOCK_DATA) {
-      return new UserActionResponse();
-    }
     const params: Record<string, Object> = {};
     params['username'] = username;
     const f: string = filter.trim();
@@ -1890,9 +1332,6 @@ export class ApiClient {
    * 获取用户回应（/discourse-reactions/posts/reactions.json）
    */
   async getUserReactions(username: string, beforeReactionUserId: number = 0): Promise<UserReactionsResponse> {
-    if (AppConstants.USE_MOCK_DATA) {
-      return new UserReactionsResponse();
-    }
     const params: Record<string, Object> = {};
     params['username'] = username;
     if (beforeReactionUserId > 0) {
@@ -1905,9 +1344,6 @@ export class ApiClient {
   }
 
   async getUserBadges(username: string): Promise<UserBadgeListResponse> {
-    if (AppConstants.USE_MOCK_DATA) {
-      return new UserBadgeListResponse();
-    }
     const params: Record<string, Object> = {};
     params['grouped'] = 'true';
     const raw: string = await this.http.get(ApiConstants.userBadges(encodeURIComponent(username)), params);
@@ -1916,9 +1352,6 @@ export class ApiClient {
   }
 
   async getBadge(badgeId: number): Promise<Badge> {
-    if (AppConstants.USE_MOCK_DATA) {
-      return new Badge();
-    }
     const raw: string = await this.http.get(ApiConstants.badge(badgeId));
     const json: Record<string, Object> = JSON.parse(raw) as Record<string, Object>;
     const badgeVal = json['badge'];
@@ -1929,9 +1362,6 @@ export class ApiClient {
   }
 
   async getBadgeUsers(badgeId: number, username: string = ''): Promise<BadgeDetailResponse> {
-    if (AppConstants.USE_MOCK_DATA) {
-      return new BadgeDetailResponse();
-    }
     const params: Record<string, Object> = {};
     params['badge_id'] = badgeId.toString();
     const trimmedUsername: string = username.trim();
@@ -1947,9 +1377,6 @@ export class ApiClient {
    * 获取关注列表
    */
   async getFollowing(username: string): Promise<FollowUser[]> {
-    if (AppConstants.USE_MOCK_DATA) {
-      return [];
-    }
     const raw: string = await this.http.get(ApiConstants.userFollowing(encodeURIComponent(username)));
     const parsed: Object = JSON.parse(raw) as Object;
     if (!(parsed instanceof Array)) {
@@ -1967,9 +1394,6 @@ export class ApiClient {
    * 获取粉丝列表
    */
   async getFollowers(username: string): Promise<FollowUser[]> {
-    if (AppConstants.USE_MOCK_DATA) {
-      return [];
-    }
     const raw: string = await this.http.get(ApiConstants.userFollowers(encodeURIComponent(username)));
     const parsed: Object = JSON.parse(raw) as Object;
     if (!(parsed instanceof Array)) {
@@ -1987,9 +1411,6 @@ export class ApiClient {
    * 关注用户
    */
   async followUser(username: string): Promise<void> {
-    if (AppConstants.USE_MOCK_DATA) {
-      return;
-    }
     await this.http.put(ApiConstants.followUser(encodeURIComponent(username)));
   }
 
@@ -1997,19 +1418,25 @@ export class ApiClient {
    * 取消关注用户
    */
   async unfollowUser(username: string): Promise<void> {
-    if (AppConstants.USE_MOCK_DATA) {
+    await this.http.delete(ApiConstants.followUser(encodeURIComponent(username)));
+  }
+
+  /**
+   * 更新话题通知级别（0=静音, 1=常规, 2=跟踪, 3=关注）
+   */
+  async updateTopicNotificationLevel(topicId: number, level: number): Promise<void> {
+    if (topicId <= 0) {
       return;
     }
-    await this.http.delete(ApiConstants.followUser(encodeURIComponent(username)));
+    const form: Record<string, Object> = {};
+    form['notification_level'] = Math.max(0, Math.round(level)).toString();
+    await this.http.postFormText(ApiConstants.topicNotificationLevel(topicId), form);
   }
 
   /**
    * 更新用户通知级别（normal/mute/ignore）
    */
   async updateUserNotificationLevel(username: string, level: string, expiringAt: string = ''): Promise<void> {
-    if (AppConstants.USE_MOCK_DATA) {
-      return;
-    }
     const form: Record<string, Object> = {};
     form['notification_level'] = level;
     if (expiringAt.trim().length > 0) {

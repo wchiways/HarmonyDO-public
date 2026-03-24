@@ -3,7 +3,7 @@ import { SearchFilter, SearchStatus } from '../../../models/SearchFilter';
 const CHIP_HEIGHT: number = 30;
 
 /**
- * 已激活过滤条件显示条（对齐 Flutter: ActiveSearchFiltersBar）
+ * 已激活过滤条件显示条
  * - 展示：分类 / 标签 / 状态 / 时间范围
  * - 支持逐项清除与清除全部
  */

@@ -155,7 +155,7 @@ export struct CfChallengePage {
   }
 
   private snapshotInitialClearanceFromWebCookie(): void {
-    // Flutter 对齐：验证页加载时抓取 WebView 中的 cf_clearance 快照，用于过滤“旧值残留”
+    // 验证页加载时抓取 WebView 中的 cf_clearance 快照，用于过滤“旧值残留”
     this.initialCfClearanceSnapshot = '';
     try {
       const raw: string = webview.WebCookieManager.fetchCookieSync(AppConstants.BASE_URL, false);

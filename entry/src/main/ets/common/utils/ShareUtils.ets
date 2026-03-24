@@ -3,7 +3,7 @@ import { AppConstants } from '../constants/AppConstants';
 /**
  * 分享链接工具类
  *
- * 对齐安卓(FluxDO)规则：
+ * 规则：
  * - 匿名分享：不附带 `?u=` 参数
  * - 登录分享：可附带 `?u=username`
  */

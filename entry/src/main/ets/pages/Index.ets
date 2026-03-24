@@ -17,11 +17,13 @@ import { MyTopicsPage } from '../views/pages/MyTopicsPage';
 import { MyBadgesPage } from '../views/pages/MyBadgesPage';
 import { BrowsingHistoryPage } from '../views/pages/BrowsingHistoryPage';
 import { CfRefreshHost } from '../views/components/CfRefreshHost';
+import { ReadLaterBubble } from '../views/components/ReadLaterBubble';
 import { Topic } from '../models/Topic';
 import { Category } from '../models/Category';
 import { User } from '../models/User';
 import { TopicTrackingService } from '../services/messagebus/TopicTrackingService';
 import { PreloadedDataService } from '../services/messagebus/PreloadedDataService';
+import { NotificationTrackingService } from '../services/messagebus/NotificationTrackingService';
 import { AuthService } from '../services/auth/AuthService';
 import {
   RouterManager,
@@ -151,9 +153,11 @@ struct Index {
     }
 
     const tracking: TopicTrackingService = TopicTrackingService.getInstance();
+    const notificationTracking: NotificationTrackingService = NotificationTrackingService.getInstance();
     const preloaded: PreloadedDataService = PreloadedDataService.getInstance();
 
     tracking.stop();
+    notificationTracking.stop();
     await preloaded.clearSessionScopedState();
     if (requestId !== this.backgroundSessionSyncId) {
       return;
@@ -168,6 +172,16 @@ struct Index {
     await tracking.start(loggedIn);
     if (requestId !== this.backgroundSessionSyncId) {
       return;
+    }
+    if (loggedIn) {
+      await notificationTracking.start();
+      if (requestId !== this.backgroundSessionSyncId) {
+        notificationTracking.stop();
+        return;
+      }
+    } else {
+      notificationTracking.stop();
+      notificationTracking.resetState();
     }
     this.backgroundSessionBootstrapped = true;
     this.lastBackgroundLoggedIn = loggedIn;
@@ -346,6 +360,7 @@ struct Index {
         .scrollable(false)
 
         this.FloatingTabBar()
+        ReadLaterBubble()
       }
       .width('100%')
       .height('100%')

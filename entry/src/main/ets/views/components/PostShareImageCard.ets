@@ -98,7 +98,7 @@ function resolveTheme(themeIndex: number): ShareImageTheme {
 
 @Builder
 function BrandLogo() {
-  // 用基础图形近似绘制 FluxDO 的 LINUX DO 圆形条纹 Logo
+  // 用基础图形绘制圆形条纹 Logo
   Stack() {
     Circle()
       .width(24)

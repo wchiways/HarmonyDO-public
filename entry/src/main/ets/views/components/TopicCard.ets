@@ -8,7 +8,7 @@ import { TagBadge } from './TopicBadges';
 /**
  * 话题卡片 - 标准样式
  *
- * 精确复刻安卓版布局：
+ * 标准双行话题卡片布局：
  * - 左侧：楼主头像（圆形 34px）
  * - 右侧上行：标题文字（最多2行） + 回复数（右上角）
  * - 右侧下行：分类标签+tag标签（左） + 点赞数·时间（右）
@@ -113,7 +113,7 @@ export struct TopicCard {
             // 分类标签
             if (this.category !== null) {
               Row() {
-                // 分类图标：logo → lock → dot（不再做 sys.symbol 近似映射，避免与安卓不一致）
+                // 分类图标：logo → lock → dot，避免无图标时留空
                 if (this.categoryHasLogo()) {
                   Image(UrlUtils.resolveUrl((this.category as Category).uploadedLogo))
                     .width(12)
@@ -305,7 +305,7 @@ export struct CompactTopicCard {
         .fontColor([$r('app.color.primary')])
         .margin({ right: 8 })
 
-      // 分类图标：logo → lock → dot（不再做 sys.symbol 近似映射，避免与安卓不一致）
+      // 分类图标：logo → lock → dot，避免无图标时留空
       if (this.category !== null) {
         if (
           (this.category as Category).uploadedLogo !== null

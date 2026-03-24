@@ -21,7 +21,7 @@ export interface CookieRecord {
 }
 
 /**
- * 更接近 FluxDO CookieJar 的轻量 Cookie Store。
+ * 轻量 Cookie Store。
  *
  * 当前 ArkWeb 只能直接读出 `Cookie` header 字符串，拿不到完整 cookie 对象，
  * 因此这里采用“能保留的元数据尽量保留”的策略：

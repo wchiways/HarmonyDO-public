@@ -21,6 +21,11 @@ export class ApiConstants {
     return `/t/${id}/posts.json`;
   }
 
+  /** 更新话题通知级别 */
+  static topicNotificationLevel(id: number): string {
+    return `/t/${id}/notifications`;
+  }
+
   /** 获取分类列表 */
   static readonly CATEGORIES: string = '/categories.json';
 

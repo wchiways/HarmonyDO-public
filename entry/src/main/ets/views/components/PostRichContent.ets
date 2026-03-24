@@ -2577,7 +2577,7 @@ export struct PostRichContent {
   }
 
   private getImageMaxHeightVp(): number {
-    // 对齐安卓/FluxDO：正文单图基本不做人为高度压缩，避免竖图因限高再次变窄
+    // 正文单图基本不做人为高度压缩，避免竖图因限高再次变窄
     return this.dense ? 420 : 4096;
   }
 
@@ -2618,7 +2618,7 @@ export struct PostRichContent {
     }
 
     const maxH: number = this.getImageMaxHeightVp();
-    // 对齐安卓/FluxDO：正文块图宽度跟随容器，原始 width/height 主要只用于保留宽高比
+    // 正文块图宽度跟随容器，原始 width/height 主要用于保留宽高比
     const aspectRatio: number = displayHeight / displayWidth;
     displayWidth = availableWidth;
     displayHeight = displayWidth * aspectRatio;

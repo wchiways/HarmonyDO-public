@@ -12,13 +12,6 @@ export class AppConstants {
    */
   static readonly DEBUG_TRACKING: boolean = true;
 
-  /**
-   * UI 复刻阶段：是否使用 Mock 数据（离线可展示 UI）
-   * - true: ApiClient 直接返回本地构造数据，不发起网络请求
-   * - false: 走真实网络（后续业务功能阶段）
-   */
-  static readonly USE_MOCK_DATA: boolean = false;
-
   /** API 前缀 */
   static readonly API_PREFIX: string = '';
 

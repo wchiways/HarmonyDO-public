@@ -58,7 +58,7 @@ class TrackedTopicState {
 }
 
 /**
- * 话题追踪状态（对齐 FluxDO / Discourse topic-tracking-state）
+ * 话题追踪状态服务
  *
  * - 统计 NEW / UNREAD 计数（用于“新话题(x)/未读完(x)”）
  * - 监听 /latest /new 频道，生成 incoming topic ids（用于“查看 X 个新的或更新的话题”）
@@ -224,7 +224,7 @@ export class TopicTrackingService {
 
   /**
    * 获取某个话题最新的 highest_post_number（优先 tracking state，其次 /latest payload）
-   * 用于列表页“回复数”在 MessageBus 更新时即时对齐安卓。
+   * 用于列表页在 MessageBus 更新时即时刷新回复数。
    */
   getHighestPostNumber(topicId: number): number {
     if (topicId <= 0) return 0;
@@ -363,7 +363,7 @@ export class TopicTrackingService {
       hilog.warn(0x0000, TAG, 'topicTrackingStateMeta missing');
     }
 
-    // 对齐 FluxDO：无论 meta 是否存在，都额外订阅 /latest 与 /new 以实时驱动“查看 X 个新的或更新的话题”
+    // 无论 meta 是否存在，都额外订阅 /latest 与 /new，用于实时驱动“查看 X 个新的或更新的话题”
     this.ensureIncomingChannelsSubscribed(meta);
 
     if (!this.started || !this.isAuthGenerationCurrent(authGeneration, 'full_before_finalize')) {
@@ -515,7 +515,7 @@ export class TopicTrackingService {
       incomingCategoryId = isNaN(parsed) ? null : parsed;
     }
 
-    // 对齐 Flutter LatestChannelNotifier：仅处理 latest/new_topic 两种消息类型
+    // 仅处理 latest/new_topic 两种消息类型
     // 直接从 data['topic_id'] 取 ID，从 payload['category_id'] 取分类，去重后 notify
     if (messageType === 'latest' || messageType === 'new_topic') {
       if (topicId > 0) {

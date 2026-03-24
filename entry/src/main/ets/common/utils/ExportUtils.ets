@@ -58,7 +58,7 @@ export class ExportUtils {
       ids = [streamIds[0]];
     } else {
       ids = [...streamIds];
-      // 对齐安卓：MD 全量导出上限 10 层
+      // MD 全量导出上限 10 层
       if (format === 0 && ids.length > 10) {
         ids = ids.slice(0, 10);
       }

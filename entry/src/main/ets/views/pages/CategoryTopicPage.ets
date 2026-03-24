@@ -34,7 +34,7 @@ export struct CategoryTopicPage {
   @Local currentPage: number = 0;
   @Local hasMore: boolean = true;
 
-  // 排序与筛选状态（对齐 Flutter：filter + order + period）
+  // 排序与筛选状态
   @Local currentFilter: string = '最新';
   @Local currentOrder: string = '默认';
   @Local orderAscending: boolean = false;
@@ -192,7 +192,7 @@ export struct CategoryTopicPage {
       const apiClient: ApiClient = ApiClient.getInstance();
       const c: Category = this.category as Category;
 
-      // filter/period（对齐 FluxDO：latest/new/unread/unseen/top/hot）
+      // filter/period 映射：latest/new/unread/unseen/top/hot
       let filterName: string = 'latest';
       let period: string | null = null;
       switch (this.currentFilter) {
@@ -577,7 +577,7 @@ export struct CategoryTopicPage {
       this.trackedUnreadCount = 0;
     }
 
-    // 对齐安卓：当 tracking 的 highest_post_number 增长时，分类页列表内已有话题的回复数也应即时变大
+    // 当 tracking 的 highest_post_number 增长时，同步更新分类页列表中的回复数
     this.syncTopicCountsFromTracking(svc);
   }
 
@@ -676,7 +676,7 @@ export struct CategoryTopicPage {
         .textOverflow({ overflow: TextOverflow.Ellipsis })
         .margin({ left: 6, right: 10 })
 
-      // 右侧占位（对齐安卓：搜索按钮）
+      // 右侧占位（搜索按钮）
       Row() {
         SymbolGlyph($r('sys.symbol.magnifyingglass'))
           .fontSize(18)

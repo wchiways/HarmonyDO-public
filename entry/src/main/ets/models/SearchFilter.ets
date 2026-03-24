@@ -1,6 +1,6 @@
 /**
  * 搜索范围类型（用于用户内容页面）
- * 对齐 Flutter: fluxdo-main/lib/models/search_filter.dart
+ * 用于生成 in:bookmarks / in:created / in:seen 查询片段
  */
 export class SearchInType {
   readonly value: string;
@@ -22,7 +22,7 @@ export class SearchInType {
 
 /**
  * 话题状态过滤
- * 对齐 Flutter: SearchStatus
+ * 用于生成 status:xxx 查询片段
  */
 export class SearchStatus {
   readonly value: string;
@@ -106,7 +106,7 @@ export class SearchFilter {
 
   /**
    * 检查是否为空（没有任何过滤条件）
-   * 说明：不包含 inType（对齐 Flutter）
+   * 说明：不包含 inType
    */
   get isEmpty(): boolean {
     return this.categoryId === null
@@ -176,7 +176,7 @@ export class SearchFilter {
 
   /**
    * 转换为 Discourse 搜索查询字符串
-   * 例如：in:bookmarks #分类 tags:flutter status:open after:2024-01-01
+   * 例如：in:bookmarks #分类 tags:harmonyos status:open after:2024-01-01
    */
   toQueryString(): string {
     const parts: string[] = [];

@@ -29,7 +29,7 @@ const DEFAULT_ENABLED_REACTIONS: string[] = [
 ];
 
 /**
- * 预加载数据服务（对齐 FluxDO）
+ * 预加载数据服务
  *
  * 从 Discourse HTML 的 data-preloaded 属性中提取：
  * - siteSettings.long_polling_base_url（MessageBus 独立域名）
@@ -713,7 +713,7 @@ export class PreloadedDataService {
           }
 
           if (rawVal === null || rawEnabledReactions === null) {
-            // 2) 兜底：只在 fast path 缺字段时才 decode + JSON.parse 外层，再 parse siteSettings（对齐 FluxDO 解析方式）
+            // 2) 兜底：仅在 fast path 缺字段时，再 decode + JSON.parse 外层并解析 siteSettings
             try {
               const decoded: string = this.decodeHtmlEntities(encoded);
               const outer: Record<string, Object> = JSON.parse(decoded) as Record<string, Object>;

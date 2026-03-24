@@ -1,7 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { Topic, TopicListResponse, Tag } from '../../models/Topic';
 import { Category, SiteResponse } from '../../models/Category';
-import { AppConstants } from '../../common/constants/AppConstants';
+import { User } from '../../models/User';
 import { ApiClient } from '../../services/network/ApiClient';
 import { AuthService } from '../../services/auth/AuthService';
 import { TopicCard, CompactTopicCard } from '../components/TopicCard';
@@ -9,12 +9,14 @@ import { TopicListSkeleton } from '../components/TopicListSkeleton';
 import { ErrorView } from '../components/ErrorView';
 import { CategoryIcon } from '../components/CategoryIcon';
 import { TopicPreviewDialog } from '../components/TopicPreviewDialog';
+import { NotificationQuickPanel } from '../components/NotificationQuickPanel';
 import { UrlUtils } from '../../common/utils/UrlUtils';
 import { RouterManager, RouteConstants } from '../../common/utils/RouterManager';
 import { PillIconButton, PillMenuButton, SORT_FILTER_OPTIONS, SORT_FILTER_OPTIONS_LOGGED_IN, SORT_ORDER_OPTIONS } from '../components/PillControls';
 import { DEFAULT_AVAILABLE_TAGS, TagChip, TagSelectionSheet } from '../components/TagControls';
 import { WindowManager } from '../../common/utils/WindowManager';
 import { TopicTrackingService } from '../../services/messagebus/TopicTrackingService';
+import { NotificationTrackingService } from '../../services/messagebus/NotificationTrackingService';
 import { TopicListPreferences } from '../../services/storage/TopicListPreferences';
 import { HoldingHandService, HoldingHandState } from '../../services/device/HoldingHandService';
 import { CreateTopicComposerSheet } from '../components/CreateTopicComposerSheet';
@@ -53,6 +55,8 @@ export struct TopicListPage {
   @Local isLoadingMore: boolean = false;
   @Local errorMessage: string = '';
   @Local isLoggedIn: boolean = false;
+  @Local unreadNotificationCount: number = 0;
+  @Local isNotificationQuickPanelVisible: boolean = false;
   @Local trackedNewCount: number = 0;
   @Local trackedUnreadCount: number = 0;
   @Local currentPage: number = 0;
@@ -73,20 +77,20 @@ export struct TopicListPage {
   private createdTopicId: number = 0;
   private createTopicSheetRequestKey: string = '';
 
-  // “查看新话题” banner（对齐 Flutter：topic_ids 增量插入；Mock 下自动模拟）
+  // “查看新话题” banner（topic_ids 增量插入）
   @Local incomingTopicCount: number = 0;
   @Local incomingTopicIds: number[] = [];
   @Local isLoadingIncoming: boolean = false;
   @Local highlightedTopicIds: number[] = [];
-  private mockIncomingTimerId: number = -1;
-  private mockIncomingSeedId: number = 20000;
   private incomingLoadTimerId: number = -1;
   private incomingPollTimerId: number = -1;
   private incomingHighlightTimerId: number = -1;
   private incomingPollInFlight: boolean = false;
   private incomingPollBackoffMs: number = INCOMING_POLL_INTERVAL_ANON_MS;
   private trackingListener: (() => void) | null = null;
+  private notificationStateListener: (() => void) | null = null;
   private hasBootstrapped: boolean = false;
+  private lastNotificationBadgeForcedSyncAt: number = 0;
      
   // 底部弹出层状态
   @Local isSheetVisible: boolean = false;
@@ -114,6 +118,7 @@ export struct TopicListPage {
     this.reportBarVisibility(true);
     this.attachAuthStateListener();
     this.attachHoldingHandListener();
+    this.attachNotificationTrackingListener();
 
     // 避免切换页面/Tab 后重复全量 bootstrap（会重新拉取列表，导致 banner 延迟出现并“一口气跳很大”）
     if (this.hasBootstrapped) {
@@ -130,21 +135,25 @@ export struct TopicListPage {
 
   aboutToDisappear(): void {
     this.clearHeaderSnapTimer();
-    this.clearMockIncomingTimer();
     this.clearIncomingLoadTimer();
     this.clearIncomingPollTimer();
     this.clearIncomingHighlightTimer();
     this.isHomeFabExpanded = false;
     this.highlightedTopicIds = [];
     this.detachTrackingListener();
+    this.detachNotificationTrackingListener();
+    this.detachAuthStateListener();
     this.detachHoldingHandListener();
   }
 
   private onPageResume(): void {
-    // 页面恢复可见时：不重新拉取列表，只同步 tracking UI（对齐安卓：人在别的页也持续累加）
+    // 页面恢复可见时：不重新拉取列表，只同步 tracking UI
     this.ensureTrackingStarted();
     this.refreshTrackingUI();
     this.maybeArmIncomingBanner();
+    this.syncNotificationBadgeState().catch((err: Object) => {
+      hilog.warn(0x0000, TAG, 'Resume sync notification badge failed: %{public}s', JSON.stringify(err));
+    });
 
     // 登录态可能在其它页面发生变化（后续接入登录后），恢复时同步一下
     this.initAuthState()
@@ -183,6 +192,36 @@ export struct TopicListPage {
     this.authStateListener = null;
   }
 
+  private syncNotificationCountFromState(): void {
+    if (!this.isLoggedIn) {
+      this.unreadNotificationCount = 0;
+      return;
+    }
+    const authUser: User | null = AuthService.getInstance().getCurrentUser();
+    const authCount: number = authUser !== null ? Math.max(0, authUser.allUnreadNotificationsCount) : 0;
+    const trackedCount: number = NotificationTrackingService.getInstance().getAllUnreadCount();
+    this.unreadNotificationCount = Math.max(authCount, trackedCount);
+  }
+
+  private attachNotificationTrackingListener(): void {
+    if (this.notificationStateListener !== null) {
+      return;
+    }
+    this.notificationStateListener = () => {
+      this.syncNotificationCountFromState();
+    };
+    NotificationTrackingService.getInstance().addListener(this.notificationStateListener);
+    this.syncNotificationCountFromState();
+  }
+
+  private detachNotificationTrackingListener(): void {
+    if (this.notificationStateListener === null) {
+      return;
+    }
+    NotificationTrackingService.getInstance().removeListener(this.notificationStateListener);
+    this.notificationStateListener = null;
+  }
+
   private attachHoldingHandListener(): void {
     if (this.holdingHandListener !== null) {
       return;
@@ -206,7 +245,8 @@ export struct TopicListPage {
   private async bootstrapPage(): Promise<void> {
     await this.restorePersistedState();
     await this.initAuthState();
-    // 提前启动 tracking：让 /latest + /new 更接近安卓”实时”体验
+    await this.syncNotificationBadgeState();
+    // 提前启动 tracking，尽快建立 /latest + /new 的实时状态
     this.ensureTrackingStarted();
     await this.loadCategories();
     await this.loadTopics(true);
@@ -263,8 +303,14 @@ export struct TopicListPage {
       await auth.init();
       const next: boolean = auth.getIsLoggedIn();
       this.isLoggedIn = next;
+      const currentUser: User | null = auth.getCurrentUser();
+      this.unreadNotificationCount = currentUser !== null
+        ? Math.max(0, currentUser.allUnreadNotificationsCount)
+        : 0;
+      this.syncNotificationCountFromState();
 
       if (!next) {
+        this.unreadNotificationCount = 0;
         this.trackedNewCount = 0;
         this.trackedUnreadCount = 0;
         if (this.currentFilter === '新话题' || this.currentFilter === '未读完' || this.currentFilter === '未浏览') {
@@ -277,6 +323,52 @@ export struct TopicListPage {
       }
     } catch (err) {
       hilog.error(0x0000, TAG, 'Init auth state failed: %{public}s', JSON.stringify(err));
+    }
+  }
+
+  private shouldNotifyCurrentUserUpdate(previousUser: User | null, nextUser: User): boolean {
+    if (previousUser === null) {
+      return true;
+    }
+    return previousUser.id !== nextUser.id
+      || previousUser.allUnreadNotificationsCount !== nextUser.allUnreadNotificationsCount
+      || previousUser.unreadNotifications !== nextUser.unreadNotifications
+      || previousUser.unreadHighPriorityNotifications !== nextUser.unreadHighPriorityNotifications
+      || previousUser.notificationChannelPosition !== nextUser.notificationChannelPosition;
+  }
+
+  private async syncNotificationBadgeState(): Promise<void> {
+    if (!this.isLoggedIn) {
+      this.unreadNotificationCount = 0;
+      return;
+    }
+
+    const auth: AuthService = AuthService.getInstance();
+    const api: ApiClient = ApiClient.getInstance();
+    const previousUser: User | null = auth.getCurrentUser();
+    if (previousUser !== null) {
+      this.unreadNotificationCount = Math.max(0, previousUser.allUnreadNotificationsCount);
+    }
+
+    try {
+      const now: number = Date.now();
+      if (now - this.lastNotificationBadgeForcedSyncAt >= 6000 || this.unreadNotificationCount <= 0) {
+        api.invalidateCurrentUserCache();
+        this.lastNotificationBadgeForcedSyncAt = now;
+      }
+      const latestUser: User | null = await api.getCurrentUser();
+      if (latestUser === null) {
+        this.syncNotificationCountFromState();
+        return;
+      }
+      this.unreadNotificationCount = Math.max(0, latestUser.allUnreadNotificationsCount);
+      api.setCachedCurrentUser(latestUser);
+      auth.setCurrentUser(latestUser, this.shouldNotifyCurrentUserUpdate(previousUser, latestUser));
+      NotificationTrackingService.getInstance().syncStateFromCurrentUser(latestUser, true);
+      this.syncNotificationCountFromState();
+    } catch (err) {
+      hilog.warn(0x0000, TAG, 'Sync notification badge state failed: %{public}s', ApiClient.formatError(err));
+      this.syncNotificationCountFromState();
     }
   }
 
@@ -296,7 +388,7 @@ export struct TopicListPage {
       }
       this.categoryMap = newMap;
 
-      // 安卓端默认“我的分类”为空：不自动填充，避免 Tab 栏出现一堆分类影响对齐验收
+      // 默认不自动填充“我的分类”，避免 Tab 栏出现过多分类
     } catch (err) {
       hilog.error(0x0000, TAG, 'Load categories failed: %{public}s', JSON.stringify(err));
     }
@@ -318,7 +410,7 @@ export struct TopicListPage {
     try {
       const apiClient: ApiClient = ApiClient.getInstance();
 
-      // 1) filter/period/order（对齐 FluxDO：latest/new/unread/unseen/top/hot）
+      // 1) filter/period/order 映射：latest/new/unread/unseen/top/hot
       let filterName: string = 'latest';
       let period: string | null = null;
       switch (this.currentFilter) {
@@ -400,7 +492,7 @@ export struct TopicListPage {
         }
       }
 
-      // 3) tags（多选时对齐 Flutter：match_all_tags=true）
+      // 3) tags（多选时使用 match_all_tags=true）
       const tagsParam: string[] | null = this.selectedTags.length > 0 ? [...this.selectedTags] : null;
 
       const response: TopicListResponse = await apiClient.getFilteredTopics(
@@ -518,13 +610,6 @@ export struct TopicListPage {
     }
   }
 
-  private clearMockIncomingTimer(): void {
-    if (this.mockIncomingTimerId >= 0) {
-      clearTimeout(this.mockIncomingTimerId);
-      this.mockIncomingTimerId = -1;
-    }
-  }
-
   private clearIncomingLoadTimer(): void {
     if (this.incomingLoadTimerId >= 0) {
       clearTimeout(this.incomingLoadTimerId);
@@ -552,7 +637,6 @@ export struct TopicListPage {
     this.isLoadingIncoming = false;
     this.incomingPollBackoffMs = INCOMING_POLL_INTERVAL_ANON_MS;
     this.highlightedTopicIds = [];
-    this.clearMockIncomingTimer();
     this.clearIncomingLoadTimer();
     this.clearIncomingPollTimer();
     this.clearIncomingHighlightTimer();
@@ -616,20 +700,6 @@ export struct TopicListPage {
     return this.clamp((this.headerOffset - SEARCH_BAR_HEIGHT) / SORT_BAR_HEIGHT, 0, 1);
   }
 
-  private maybeArmMockIncomingBanner(): void {
-    if (!AppConstants.USE_MOCK_DATA) return;
-    if (this.incomingTopicCount > 0) return;
-    if (this.mockIncomingTimerId >= 0) return;
-    if (this.currentFilter !== '最新') return;
-
-    this.mockIncomingTimerId = setTimeout(() => {
-      this.mockIncomingTimerId = -1;
-      if (this.incomingTopicCount === 0 && this.currentFilter === '最新') {
-        this.incomingTopicCount = 3;
-      }
-    }, 2500);
-  }
-
   private getIncomingAnchorTopicId(): number {
     for (let i = 0; i < this.topics.length; i++) {
       const t: Topic = this.topics[i];
@@ -639,10 +709,6 @@ export struct TopicListPage {
   }
 
   private maybeArmIncomingBanner(): void {
-    if (AppConstants.USE_MOCK_DATA) {
-      this.maybeArmMockIncomingBanner();
-      return;
-    }
     if (this.currentFilter !== '最新') return;
     if (this.topics.length === 0) return;
 
@@ -863,32 +929,6 @@ export struct TopicListPage {
   private async onIncomingBannerClick(): Promise<void> {
     if (this.isLoadingIncoming) return;
 
-    if (AppConstants.USE_MOCK_DATA) {
-      if (this.incomingTopicCount <= 0) return;
-      this.isLoadingIncoming = true;
-      this.clearIncomingLoadTimer();
-
-      const count: number = this.incomingTopicCount;
-      this.incomingLoadTimerId = setTimeout(() => {
-        this.incomingLoadTimerId = -1;
-
-        const newTopics: Topic[] = this.makeMockIncomingTopics(count);
-        this.insertIncomingTopics(newTopics);
-        this.highlightIncomingTopicsOnce(newTopics.map((t: Topic) => t.id));
-        this.incomingTopicCount = 0;
-        this.incomingTopicIds = [];
-        this.isLoadingIncoming = false;
-
-        this.listScroller.scrollTo({
-          xOffset: 0,
-          yOffset: 0,
-          animation: { duration: 300, curve: Curve.EaseOut }
-        });
-        this.maybeArmMockIncomingBanner();
-      }, 180);
-      return;
-    }
-
     if (this.incomingTopicCount <= 0 || this.incomingTopicIds.length === 0) return;
 
     this.isLoadingIncoming = true;
@@ -928,39 +968,6 @@ export struct TopicListPage {
     } finally {
       this.isLoadingIncoming = false;
     }
-  }
-
-  private makeMockIncomingTopics(count: number): Topic[] {
-    const list: Topic[] = [];
-    const now: Date = new Date();
-    const baseCategoryId: string = this.topics.length > 0 ? this.topics[0].categoryId : '1';
-
-    for (let i = 0; i < count; i++) {
-      const t: Topic = new Topic();
-      t.id = this.mockIncomingSeedId;
-      this.mockIncomingSeedId = this.mockIncomingSeedId + 1;
-
-      t.title = `【新】离线插入话题 #${t.id}`;
-      t.slug = `mock-incoming-${t.id}`;
-      t.categoryId = baseCategoryId;
-
-      t.postsCount = 1 + (i % 3);
-      t.replyCount = Math.max(0, t.postsCount - 1);
-      t.views = 0;
-      t.likeCount = 0;
-
-      t.createdAt = now;
-      t.lastPostedAt = now;
-      t.lastPosterUsername = i % 2 === 0 ? 'system' : 'alice';
-
-      t.unseen = true;
-      t.unread = 0;
-      t.lastReadPostNumber = 0;
-      t.highestPostNumber = t.postsCount;
-
-      list.push(t);
-    }
-    return list;
   }
 
   @Builder
@@ -1064,6 +1071,24 @@ export struct TopicListPage {
         this.closeHomeFabMenu();
       })
     }
+  }
+
+  private getUnreadNotificationCount(): number {
+    return Math.max(0, this.unreadNotificationCount);
+  }
+
+  private openNotifications(): void {
+    if (!this.isLoggedIn) {
+      return;
+    }
+    this.isNotificationQuickPanelVisible = true;
+  }
+
+  private openNotificationsPage(): void {
+    this.isNotificationQuickPanelVisible = false;
+    setTimeout(() => {
+      RouterManager.pushNotifications();
+    }, 0);
   }
 
   @Builder
@@ -1242,7 +1267,6 @@ export struct TopicListPage {
   }
 
   private ensureTrackingStarted(): void {
-    if (AppConstants.USE_MOCK_DATA) return;
     if (!this.isLoggedIn && this.currentFilter !== '最新') return;
 
     const svc: TopicTrackingService = TopicTrackingService.getInstance();
@@ -1275,7 +1299,6 @@ export struct TopicListPage {
   }
 
   private refreshTrackingUI(): void {
-    if (AppConstants.USE_MOCK_DATA) return;
     const svc: TopicTrackingService = TopicTrackingService.getInstance();
     const categoryId: number | null = this.getCurrentQueryCategoryId();
     if (this.isLoggedIn) {
@@ -1315,7 +1338,7 @@ export struct TopicListPage {
       }
     }
 
-    // 对齐安卓：当 MessageBus/tracking 的 highest_post_number 增长时，列表内已有话题的回复数也应即时变大
+    // 当 MessageBus/tracking 的 highest_post_number 增长时，同步更新列表内已有话题的回复数
     this.syncTopicCountsFromTracking(svc);
   }
 
@@ -1538,7 +1561,7 @@ export struct TopicListPage {
     }
 
     this.currentOrder = next;
-    // 选择新排序字段：默认降序（对齐 FluxDO）
+    // 选择新排序字段时默认降序
     this.orderAscending = false;
     this.persistSortPreferences();
     this.ensureTrackingStarted();
@@ -2014,6 +2037,18 @@ export struct TopicListPage {
     }
   }
 
+  @Builder
+  NotificationQuickPanelBuilder() {
+    NotificationQuickPanel({
+      onClose: () => {
+        this.isNotificationQuickPanelVisible = false;
+      },
+      onViewAll: () => {
+        this.openNotificationsPage();
+      }
+    })
+  }
+
   build() {
     Stack() {
       Column() {
@@ -2021,24 +2056,62 @@ export struct TopicListPage {
         if (this.getSearchProgress() < 1) {
           Column() {
             Row() {
-              SymbolGlyph($r('sys.symbol.magnifyingglass'))
-                .fontSize(18)
-                .fontColor([$r('app.color.on_surface_tertiary')])
-                .margin({ right: 8 })
-              Text($r('app.string.search_hint'))
-                .fontSize(15)
-                .fontColor($r('app.color.on_surface_tertiary'))
-                .layoutWeight(1)
+              Row() {
+                SymbolGlyph($r('sys.symbol.magnifyingglass'))
+                  .fontSize(18)
+                  .fontColor([$r('app.color.on_surface_tertiary')])
+                  .margin({ right: 8 })
+                Text($r('app.string.search_hint'))
+                  .fontSize(15)
+                  .fontColor($r('app.color.on_surface_tertiary'))
+                  .layoutWeight(1)
+              }
+              .layoutWeight(1)
+              .height(40)
+              .padding({ left: 16, right: 16 })
+              .backgroundColor($r('app.color.search_background'))
+              .borderRadius(20)
+              .alignItems(VerticalAlign.Center)
+              .onClick(() => {
+                RouterManager.pushPath(RouteConstants.PAGE_SEARCH);
+              })
+
+              if (this.isLoggedIn) {
+                Stack({ alignContent: Alignment.TopEnd }) {
+                  Row() {
+                    SymbolGlyph($r('sys.symbol.bell'))
+                      .fontSize(18)
+                      .fontColor([$r('app.color.on_surface')])
+                  }
+                  .width(40)
+                  .height(40)
+                  .borderRadius(20)
+                  .backgroundColor($r('app.color.search_background'))
+                  .justifyContent(FlexAlign.Center)
+                  .alignItems(VerticalAlign.Center)
+                  .onClick(() => {
+                    this.openNotifications();
+                  })
+
+                  if (this.getUnreadNotificationCount() > 0) {
+                    Row() {
+                      Text(this.getUnreadNotificationCount() > 99 ? '99+' : this.getUnreadNotificationCount().toString())
+                        .fontSize(9)
+                        .fontWeight(FontWeight.Bold)
+                        .fontColor(Color.White)
+                    }
+                    .padding({ left: 5, right: 5, top: 1, bottom: 1 })
+                    .backgroundColor($r('app.color.error'))
+                    .borderRadius(8)
+                    .margin({ top: 0, right: 0 })
+                  }
+                }
+                .margin({ left: 8 })
+              }
             }
             .width('100%')
             .height(40)
-            .padding({ left: 16, right: 16 })
-            .backgroundColor($r('app.color.search_background'))
-            .borderRadius(20)
             .alignItems(VerticalAlign.Center)
-            .onClick(() => {
-              RouterManager.pushPath(RouteConstants.PAGE_SEARCH);
-            })
           }
           .width('100%')
           .height(SEARCH_BAR_HEIGHT * (1 - this.getSearchProgress()))
@@ -2305,7 +2378,7 @@ export struct TopicListPage {
           .onRefreshing(() => {
             this.resetIncomingBannerState();
 
-            // 对齐 FluxDO：下拉刷新后清除当前 tab 的 incoming（避免 banner 反复显示旧计数）
+            // 下拉刷新后清除当前 tab 的 incoming，避免 banner 反复显示旧计数
             if (this.currentFilter === '最新') {
               try {
                 const svc: TopicTrackingService = TopicTrackingService.getInstance();
@@ -2342,6 +2415,17 @@ export struct TopicListPage {
       .width(0)
       .height(0)
       .bindSheet($$this.isCreateTopicSheetVisible, this.CreateTopicSheetBuilder, {
+        height: SheetSize.LARGE,
+        dragBar: false,
+        showClose: false,
+        backgroundColor: $r('app.color.surface')
+      })
+
+      Column() {
+      }
+      .width(0)
+      .height(0)
+      .bindSheet($$this.isNotificationQuickPanelVisible, this.NotificationQuickPanelBuilder, {
         height: SheetSize.LARGE,
         dragBar: false,
         showClose: false,

@@ -1,6 +1,6 @@
 /**
  * 搜索排序方式
- * 对齐 FluxDO Android / Flutter：relevance / latest / likes / views / latest_topic
+ * 支持 relevance / latest / likes / views / latest_topic
  */
 export class SearchSortOrder {
   readonly key: string;

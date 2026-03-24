@@ -1,7 +1,7 @@
 import { Category } from '../../models/Category';
 
 /**
- * 话题/分类/标签的徽章与图标映射（对齐 Flutter 端的 topic_badges.dart / tag_icon_list.dart）
+ * 话题/分类/标签的徽章与图标映射
  *
  * 说明：
  * - Discourse 分类 icon 字段通常是 FontAwesome 名称或 css-like class（如 "fa-solid fa-code"）。
@@ -37,7 +37,7 @@ function normalizeFaIconName(raw: string | null): string {
 
 export class BadgeIconUtils {
   /**
-   * 分类 icon -> sys.symbol 映射（尽量贴近安卓/Flutter）
+   * 分类 icon -> sys.symbol 映射
    */
   static getCategorySymbol(category: Category, parent: Category | null = null): Resource | null {
     const own: string = normalizeFaIconName(category.icon);

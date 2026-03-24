@@ -10,7 +10,7 @@ const TAG: string = 'CfClearanceRefresh';
 /**
  * cf_clearance 自动续期服务
  *
- * 参考安卓/Flutter 方案：
+ * 实现方案：
  * - 维持一个隐藏 WebView，加载 Turnstile widget（refresh-expired=auto）
  * - 覆写 window.fetch，拦截 Turnstile 内部对 /rc/ 端点的调用
  * - ArkTS 使用 NetworkKit 发起真实 POST，再把响应回灌给 JS 的 pending Promise

@@ -1,5 +1,5 @@
 /**
- * 错误视图组件 — 100% 复刻安卓版 ErrorView
+ * 错误视图组件
  *
  * 布局：
  * - 错误图标（红色警告图标，48px）
@@ -7,7 +7,7 @@
  * - 描述文字（灰色，如具体错误信息）
  * - 重试按钮（FilledButton 带刷新图标）+ 查看详情（OutlinedButton）
  *
- * 对应 Flutter: ErrorView(error, onRetry, title, showDetails)
+ * 支持标题、描述与重试操作。
  */
 @ComponentV2
 export struct ErrorView {

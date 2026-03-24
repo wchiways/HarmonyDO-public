@@ -9,7 +9,7 @@ const SUBCATEGORY_GUIDE_ROW_HEIGHT: number = 32; // 约等于 chip(≈24) + runS
 
 /**
  * 高级搜索过滤面板（Sheet 内容）
- * 对齐 Flutter: fluxdo-main/lib/widgets/search/search_filter_panel.dart
+ * 支持分类、标签、状态和日期范围筛选
  */
 @ComponentV2
 export struct SearchFilterPanel {
@@ -152,7 +152,7 @@ export struct SearchFilterPanel {
         this.onSetDateRange(null, null);
       })
 
-      // 快捷选项（对齐 Flutter：不强制显示选中态）
+      // 快捷选项（点击后直接设置日期范围，不强制显示选中态）
       this.FilterChip($r('app.string.filter_last_week'), false, null, () => {
         const now: Date = new Date();
         const after: Date = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -342,7 +342,7 @@ export struct SearchFilterPanel {
     const count: number = this.getSubcategories(parentId).length;
     const safeCount: number = Math.max(1, count);
     const rows: number = Math.max(1, Math.ceil(safeCount / SUBCATEGORY_GUIDE_ESTIMATE_COLUMNS));
-    // line 自带 top/bottom 4 margin，因此这里略短一点更贴近 Flutter（IntrinsicHeight + margin）观感
+    // line 自带 top/bottom 4 margin，因此这里略短一点，避免视觉上过高
     const est: number = rows * SUBCATEGORY_GUIDE_ROW_HEIGHT - 8;
     return Math.max(16, est);
   }

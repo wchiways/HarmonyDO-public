@@ -3,7 +3,6 @@ import { ApiClient } from '../../services/network/ApiClient';
 import { TagInfo, TagSearchResult } from '../../models/TagSearchResult';
 import { TagBadge, BadgeIconUtils } from './TopicBadges';
 import { ErrorView } from './ErrorView';
-import { AppConstants } from '../../common/constants/AppConstants';
 
 /**
  * 标签相关通用组件：
@@ -102,21 +101,6 @@ export struct TagSelectionSheet {
     }, 300);
   }
 
-  private buildFallback(query: string): TagInfo[] {
-    const q: string = query.trim().toLowerCase();
-    const list: TagInfo[] = [];
-    for (let i = 0; i < this.availableTags.length; i++) {
-      const name: string = this.availableTags[i];
-      if (q.length > 0 && name.toLowerCase().indexOf(q) < 0) continue;
-      const info: TagInfo = new TagInfo();
-      info.name = name;
-      info.text = name;
-      info.count = 0;
-      list.push(info);
-    }
-    return list;
-  }
-
   private getErrorText(err: Object): string {
     try {
       if (err !== null && err !== undefined) {
@@ -148,14 +132,10 @@ export struct TagSelectionSheet {
       );
       this.results = resp.results;
     } catch (err) {
-      if (AppConstants.USE_MOCK_DATA) {
-        this.results = this.buildFallback(query);
-      } else {
-        this.results = [];
-        const errText: string = this.getErrorText(err as Object);
-        this.errorMessage = errText.indexOf('Cloudflare') >= 0 ? '需要通过 Cloudflare 验证，请重试' : '标签加载失败，请重试';
-        hilog.error(0x0000, 'TagSelectionSheet', 'Search tags failed: %{public}s', errText);
-      }
+      this.results = [];
+      const errText: string = this.getErrorText(err as Object);
+      this.errorMessage = errText.indexOf('Cloudflare') >= 0 ? '需要通过 Cloudflare 验证，请重试' : '标签加载失败，请重试';
+      hilog.error(0x0000, 'TagSelectionSheet', 'Search tags failed: %{public}s', errText);
     } finally {
       this.isLoading = false;
       this.initialized = true;
@@ -191,7 +171,7 @@ export struct TagSelectionSheet {
       .padding({ top: 12 })
       .alignItems(HorizontalAlign.Center)
 
-      // 顶部：搜索框 + 确定按钮（对齐安卓）
+      // 顶部：搜索框 + 确定按钮
       Row() {
         // 搜索输入框（圆角胶囊）
         Row() {

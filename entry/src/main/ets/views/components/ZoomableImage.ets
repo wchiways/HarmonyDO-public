@@ -1,6 +1,6 @@
 /**
  * 可缩放图片（Pinch + Pan + DoubleTap）
- * 用于 ImagePreviewPage：对齐安卓端“点图可放大/拖拽”的体验。
+ * 用于 ImagePreviewPage，支持放大、拖拽与双击缩放。
  */
 @ComponentV2
 export struct ZoomableImage {

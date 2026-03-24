@@ -7,6 +7,7 @@ import { RouterManager } from '../../common/utils/RouterManager';
 import { ToastService } from '../../common/utils/ToastService';
 import { UserSummarySnapshotService } from '../../services/storage/UserSummarySnapshotService';
 import { AuthService } from '../../services/auth/AuthService';
+import { NotificationTrackingService } from '../../services/messagebus/NotificationTrackingService';
 import { ApiClient } from '../../services/network/ApiClient';
 import { CookieStore } from '../../services/network/CookieStore';
 import { User, UserSummary, UserStatus } from '../../models/User';
@@ -61,9 +62,12 @@ export struct ProfilePage {
   private hasBootstrapped: boolean = false;
   private loadRequestId: number = 0;
   private authStateListener: (() => void) | null = null;
+  private notificationTrackingListener: (() => void) | null = null;
+  private lastFreshCurrentUserSyncAt: number = 0;
 
   aboutToAppear(): void {
     this.attachAuthStateListener();
+    this.attachNotificationTrackingListener();
     const showLoading: boolean = !this.hasBootstrapped;
     this.hasBootstrapped = true;
     this.refreshPage(showLoading).catch((err: Object) => {
@@ -73,6 +77,7 @@ export struct ProfilePage {
 
   aboutToDisappear(): void {
     this.detachAuthStateListener();
+    this.detachNotificationTrackingListener();
   }
 
   private getFloatingTabBarReservedBottomVp(): number {
@@ -100,6 +105,46 @@ export struct ProfilePage {
     }
     AuthService.getInstance().removeListener(this.authStateListener);
     this.authStateListener = null;
+  }
+
+  private syncNotificationStateFromSessionUser(): void {
+    if (!this.isLoggedIn) {
+      return;
+    }
+    const sessionUser: User | null = AuthService.getInstance().getCurrentUser();
+    if (sessionUser === null) {
+      return;
+    }
+    if (this.currentUser === null) {
+      this.currentUser = sessionUser;
+      return;
+    }
+    const currentUsername: string = (this.currentUser as User).username.trim().toLowerCase();
+    const sessionUsername: string = sessionUser.username.trim().toLowerCase();
+    if (currentUsername.length > 0 && sessionUsername.length > 0 && currentUsername === sessionUsername) {
+      this.currentUser = this.mergeSessionAndProfileUser(sessionUser, this.currentUser as User);
+      return;
+    }
+    this.currentUser = sessionUser;
+  }
+
+  private attachNotificationTrackingListener(): void {
+    if (this.notificationTrackingListener !== null) {
+      return;
+    }
+    this.notificationTrackingListener = () => {
+      this.syncNotificationStateFromSessionUser();
+    };
+    NotificationTrackingService.getInstance().addListener(this.notificationTrackingListener);
+    this.syncNotificationStateFromSessionUser();
+  }
+
+  private detachNotificationTrackingListener(): void {
+    if (this.notificationTrackingListener === null) {
+      return;
+    }
+    NotificationTrackingService.getInstance().removeListener(this.notificationTrackingListener);
+    this.notificationTrackingListener = null;
   }
 
   private buildFallbackCurrentUser(username: string): User {
@@ -259,6 +304,17 @@ export struct ProfilePage {
 
     const cachedUser: User | null = auth.getCurrentUser();
     if (cachedUser !== null) {
+      const currentUsername: string = this.currentUser !== null ? (this.currentUser as User).username.trim().toLowerCase() : '';
+      const cachedUsername: string = cachedUser.username.trim().toLowerCase();
+      if (this.currentUser !== null
+        && currentUsername.length > 0
+        && cachedUsername.length > 0
+        && currentUsername === cachedUsername) {
+        this.currentUser = this.mergeSessionAndProfileUser(cachedUser, this.currentUser as User);
+        this.isLoggedIn = true;
+        this.errorMessage = '';
+        return;
+      }
       this.currentUser = cachedUser;
     } else {
       const username: string = auth.getCurrentUsername().trim();
@@ -326,6 +382,11 @@ export struct ProfilePage {
       }
 
       const api: ApiClient = ApiClient.getInstance();
+      const now: number = Date.now();
+      if (showLoading || this.isRefreshing || now - this.lastFreshCurrentUserSyncAt >= 6000) {
+        api.invalidateCurrentUserCache();
+        this.lastFreshCurrentUserSyncAt = now;
+      }
       const currentUser: User | null = await api.getCurrentUser();
       if (requestId !== this.loadRequestId) {
         return;
@@ -361,6 +422,7 @@ export struct ProfilePage {
 
       auth.setCurrentUser(resolvedUser);
       api.setCachedCurrentUser(resolvedUser);
+      NotificationTrackingService.getInstance().syncStateFromCurrentUser(resolvedUser, true);
       this.currentUser = resolvedUser;
       this.isLoggedIn = true;
       this.errorMessage = '';
@@ -554,10 +616,9 @@ export struct ProfilePage {
   }
 
   private getUnreadCount(): number {
-    if (this.currentUser === null) {
-      return 0;
-    }
-    return (this.currentUser as User).allUnreadNotificationsCount;
+    const localCount: number = this.currentUser !== null ? (this.currentUser as User).allUnreadNotificationsCount : 0;
+    const trackedCount: number = NotificationTrackingService.getInstance().getAllUnreadCount();
+    return Math.max(localCount, trackedCount);
   }
 
   private canShowInviteLinks(): boolean {

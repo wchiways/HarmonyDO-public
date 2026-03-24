@@ -240,7 +240,7 @@ export class CfChallengeService {
     this.initialCfClearanceSnapshot = CookieStore.getInstance().getCookieValue('cf_clearance');
     this.backupCfClearance = CookieStore.getInstance().getCookieRecord('cf_clearance');
 
-    // 参考安卓端：进入验证前先清理旧 cf_clearance，避免 CF 直接放行导致“验证被跳过”
+    // 进入验证前先清理旧 cf_clearance，避免 CF 直接放行导致“验证被跳过”
     CookieStore.getInstance().delete('cf_clearance');
     try {
       CfClearanceRefreshService.getInstance().stop();

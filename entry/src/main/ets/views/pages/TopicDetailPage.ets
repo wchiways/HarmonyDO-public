@@ -38,6 +38,7 @@ import { UserStatusEmoji } from '../components/UserStatusEmoji';
 import { AppContext } from '../../common/utils/AppContext';
 import { PostShareImageParams, postShareImageBuilder } from '../components/PostShareImageCard';
 import { PreferencesUtil } from '../../services/storage/PreferencesUtil';
+import { MAX_READ_LATER_ITEMS, ReadLaterService } from '../../services/storage/ReadLaterService';
 import { MessageBusMessage, MessageBusService } from '../../services/messagebus/MessageBusService';
 import { PreloadedDataService } from '../../services/messagebus/PreloadedDataService';
 import { HoldingHandService, HoldingHandState } from '../../services/device/HoldingHandService';
@@ -84,7 +85,7 @@ class ReactionPickerAnchorRect {
 }
 
 /**
- * 话题详情页面 — 100% 复刻安卓版
+ * 话题详情页面
  *
  * 主体布局：
  * - AppBar：返回按钮 + 标题（滚动后显示）+ 搜索按钮 + 更多菜单
@@ -123,7 +124,7 @@ export struct TopicDetailPage {
   @Local postsCount: number = 0;
   @Local currentPostIndex: number = 1;
 
-  // 跳楼后短暂高亮（对齐安卓）
+  // 跳楼后短暂高亮
   @Local highlightPostNumber: number = 0;
   @Local highlightOpacity: number = 0;
   @Local timeTick: number = 0;
@@ -140,6 +141,9 @@ export struct TopicDetailPage {
   @Local topicBookmarkReminderAt: Date | null = null;
   @Local isBookmarkSheetVisible: boolean = false;
   @Local isBookmarkMutating: boolean = false;
+  @Local isTopicNotificationSheetVisible: boolean = false;
+  @Local isTopicNotificationMutating: boolean = false;
+  @Local isInReadLater: boolean = false;
   @Local isPostBookmarkSheetVisible: boolean = false;
   @Local editingPostBookmarkPost: Post | null = null;
   @Local postBookmarkMutatingPostId: number = 0;
@@ -178,8 +182,9 @@ export struct TopicDetailPage {
   private listScroller: Scroller = new Scroller();
   private didScrollToInitial: boolean = false;
   private streamIndexMap: Map<number, number> = new Map();
+  private readLaterListener: (() => void) | null = null;
 
-  // 话题内搜索模式（对齐安卓）
+  // 话题内搜索模式
   @Local isSearchMode: boolean = false;
   @Local searchQuery: string = '';
   @Local searchResults: SearchPost[] = [];
@@ -256,7 +261,7 @@ export struct TopicDetailPage {
   private reactionPickerAnimationTimerId: number = -1;
   private reactionPickerAnimationToken: number = 0;
 
-  // MessageBus：话题频道（实时新回复，对齐安卓）
+  // MessageBus：话题频道（实时新回复）
   private topicChannelKey: string = '';
   private reactionsChannelKey: string = '';
   private topicChannelCallback: ((message: MessageBusMessage) => void) | null = null;
@@ -275,7 +280,10 @@ export struct TopicDetailPage {
     this.startTimeTick();
     this.attachAuthStateListener();
     this.attachHoldingHandListener();
+    this.attachReadLaterListener();
     this.initAuthState();
+    this.syncReadLaterState().catch(() => {
+    });
     this.attachTopicChannel();
 
     // 分享图主题：读取上次选择（失败则回退 0=经典）
@@ -305,6 +313,7 @@ export struct TopicDetailPage {
     this.detachTopicChannel();
     this.detachAuthStateListener();
     this.detachHoldingHandListener();
+    this.detachReadLaterListener();
   }
 
   private attachAuthStateListener(): void {
@@ -345,6 +354,123 @@ export struct TopicDetailPage {
     }
     HoldingHandService.getInstance().removeListener(this.holdingHandListener);
     this.holdingHandListener = null;
+  }
+
+  private attachReadLaterListener(): void {
+    if (this.readLaterListener !== null) {
+      return;
+    }
+    this.readLaterListener = () => {
+      this.syncReadLaterState().catch(() => {
+      });
+    };
+    ReadLaterService.getInstance().addListener(this.readLaterListener);
+  }
+
+  private detachReadLaterListener(): void {
+    if (this.readLaterListener === null) {
+      return;
+    }
+    ReadLaterService.getInstance().removeListener(this.readLaterListener);
+    this.readLaterListener = null;
+  }
+
+  private async syncReadLaterState(): Promise<void> {
+    this.isInReadLater = await ReadLaterService.getInstance().hasTopic(this.topicId);
+  }
+
+  private getReadLaterMenuLabel(): string {
+    return this.isInReadLater ? '移出浮窗' : '加入浮窗';
+  }
+
+  private getReadLaterTitle(): string {
+    const title: string = this.topicTitle.trim();
+    if (title.length > 0) {
+      return title;
+    }
+    return `话题 #${this.topicId}`;
+  }
+
+  private getReadLaterPostNumber(): number {
+    return this.currentPostIndex > 1 ? this.currentPostIndex : 0;
+  }
+
+  private async handleReadLaterAction(): Promise<void> {
+    const service: ReadLaterService = ReadLaterService.getInstance();
+    if (this.isInReadLater) {
+      await service.remove(this.topicId);
+      this.isInReadLater = false;
+      ToastService.show('已从浮窗移除');
+      return;
+    }
+
+    const added: boolean = await service.addOrUpdate(this.topicId, this.getReadLaterTitle(), this.getReadLaterPostNumber());
+    if (!added) {
+      ToastService.show(`浮窗已满（最多 ${MAX_READ_LATER_ITEMS} 个）`);
+      return;
+    }
+    this.isInReadLater = true;
+    ToastService.show('已加入浮窗');
+  }
+
+  private closeTopicNotificationSheet(): void {
+    this.isTopicNotificationSheetVisible = false;
+  }
+
+  private openTopicNotificationSheet(): void {
+    if (this.isGuestMode) {
+      ToastService.showLoginRequired();
+      return;
+    }
+    this.isTopicNotificationSheetVisible = true;
+  }
+
+  private getTopicNotificationLevelDescription(level: number): string {
+    if (level <= 0) {
+      return '不再接收这个话题的提醒';
+    }
+    if (level === 1) {
+      return '仅在通知页中正常显示';
+    }
+    if (level === 2) {
+      return '显示未读计数，但不会强提醒';
+    }
+    return '有人回复时优先提醒你';
+  }
+
+  private async updateTopicNotificationLevel(level: number): Promise<void> {
+    if (this.isTopicNotificationMutating) {
+      return;
+    }
+    const loggedIn: boolean = await this.ensureLoggedInForAction();
+    if (!loggedIn) {
+      ToastService.showLoginRequired();
+      return;
+    }
+    if (this.topicId <= 0) {
+      ToastService.show('无效的话题');
+      return;
+    }
+
+    const nextLevel: number = Math.max(0, Math.min(3, Math.round(level)));
+    const previousLevel: number = this.notificationLevel;
+    const previousLabel: string = this.notificationLevelLabel;
+    this.notificationLevel = nextLevel;
+    this.notificationLevelLabel = this.getNotificationLevelLabel(nextLevel);
+    this.isTopicNotificationMutating = true;
+
+    try {
+      await ApiClient.getInstance().updateTopicNotificationLevel(this.topicId, nextLevel);
+      this.isTopicNotificationSheetVisible = false;
+      ToastService.show(`已设为${this.notificationLevelLabel}`);
+    } catch (err) {
+      this.notificationLevel = previousLevel;
+      this.notificationLevelLabel = previousLabel;
+      const message: string = ApiClient.formatError(err).replace('Error: ', '').trim();
+      ToastService.show(message.length > 0 ? message : '订阅设置失败');
+    } finally {
+      this.isTopicNotificationMutating = false;
+    }
   }
 
   private isReplyFabLeftAligned(): boolean {
@@ -1762,12 +1888,22 @@ export struct TopicDetailPage {
   private handleTopicChannelMessage(message: MessageBusMessage): void {
     if (message === null || message === undefined) return;
 
-    // 过滤模式/搜索模式：不做实时追加（对齐安卓策略）
+    // 过滤模式/搜索模式：不做实时追加
     if (this.isSummaryMode || this.isAuthorOnlyMode || this.isSearchMode) return;
 
     const dataObj: Object | null = message.data;
     if (dataObj === null || dataObj === undefined || typeof dataObj !== 'object') return;
     const data: Record<string, Object> = dataObj as Record<string, Object>;
+
+    const notificationLevelChangeVal: Object | undefined = data['notification_level_change'];
+    if (notificationLevelChangeVal !== undefined && notificationLevelChangeVal !== null) {
+      const nextLevel: number = Number(notificationLevelChangeVal.toString());
+      if (!isNaN(nextLevel)) {
+        this.notificationLevel = Math.max(0, Math.round(nextLevel));
+        this.notificationLevelLabel = this.getNotificationLevelLabel(this.notificationLevel);
+      }
+      return;
+    }
 
     const typeVal: Object | undefined = data['type'];
     const type: string = typeVal !== undefined && typeVal !== null ? typeVal.toString() : '';
@@ -1851,7 +1987,7 @@ export struct TopicDetailPage {
 
     this.addPostIdToStreamEnd(postId);
 
-    // 若已加载到末尾且用户在底部：立即拉取正文并追加（对齐安卓）
+    // 若已加载到末尾且用户在底部：立即拉取正文并追加
     if (wasLoadedToEnd && wasAtBottom) {
       this.enqueueRealtimeFetch(postId);
     }
@@ -2013,7 +2149,7 @@ export struct TopicDetailPage {
       const titleVal = json['title'];
       this.topicTitle = titleVal !== undefined && titleVal !== null ? titleVal as string : '';
 
-      // slug（用于分享链接，对齐安卓）
+      // slug（用于分享链接）
       const slugVal = json['slug'];
       this.topicSlug = slugVal !== undefined && slugVal !== null ? slugVal.toString() : '';
 
@@ -2146,7 +2282,7 @@ export struct TopicDetailPage {
       this.posts = parsedPosts;
       this.updateTopicOwnerUsername();
 
-      // 总数真值对齐安卓：优先 stream；兜底 highest_post_number / posts_count / 已加载 posts
+      // 总帖子数优先取 stream；兜底 highest_post_number / posts_count / 已加载 posts
       let effectivePostsCount: number = 0;
       if (this.streamIds.length > 0) {
         effectivePostsCount = this.streamIds.length;
@@ -3417,7 +3553,7 @@ export struct TopicDetailPage {
       return;
     }
 
-    // 对齐安卓：目标楼层不在当前已加载列表时，直接按目标楼层重载一段连续帖子，
+    // 目标楼层不在当前已加载列表时，直接按目标楼层重载一段连续帖子，
     // 避免只把单个目标楼层插到当前列表里，造成 20 后面突然接 33 的断层。
     this.reloadWithTargetPostNumber(target);
   }
@@ -3600,7 +3736,7 @@ export struct TopicDetailPage {
     .borderRadius(8)
     .alignItems(VerticalAlign.Center)
     .onClick(() => {
-      ToastService.showLoginRequired();
+      this.openTopicNotificationSheet();
     })
   }
 
@@ -3608,7 +3744,7 @@ export struct TopicDetailPage {
   TopicHeader() {
     Column() {
       Column() {
-        // 标题（对齐 Flutter：closed/accepted icon + title）
+        // 标题（closed/accepted icon + title）
         Row() {
           if (this.isClosed) {
             SymbolGlyph($r('sys.symbol.lock'))
@@ -3656,7 +3792,7 @@ export struct TopicDetailPage {
         .margin({ top: 16 })
         .alignItems(VerticalAlign.Center)
 
-        // 通知等级（对齐 Flutter：chip 风格）
+        // 通知等级（chip 风格）
         Column() {
           this.NotificationChip()
         }
@@ -3969,7 +4105,7 @@ export struct TopicDetailPage {
                   const next: number = Math.max(0, this.scrollOffset + offset);
                   this.scrollOffset = next;
 
-                  // 底部工具栏：对齐安卓（FluxDO）
+                  // 底部工具栏显隐：
                   // - 向上滚动（offset<0）→ 显示
                   // - 向下滚动（offset>0）→ 隐藏
                   if (next <= 0) {
@@ -4249,6 +4385,17 @@ export struct TopicDetailPage {
         .bindSheet($$this.isBookmarkSheetVisible, this.TopicBookmarkSheetBuilder, {
           height: SheetSize.MEDIUM,
           dragBar: false,
+          showClose: false,
+          backgroundColor: $r('app.color.surface')
+        })
+
+        Column() {
+        }
+        .width(0)
+        .height(0)
+        .bindSheet($$this.isTopicNotificationSheetVisible, this.TopicNotificationSheetBuilder, {
+          height: SheetSize.FIT_CONTENT,
+          dragBar: true,
           showClose: false,
           backgroundColor: $r('app.color.surface')
         })
@@ -4714,11 +4861,11 @@ export struct TopicDetailPage {
         Row() {
           SymbolGlyph($r('sys.symbol.clock'))
             .fontSize(16)
-            .fontColor([$r('app.color.on_surface')])
+            .fontColor(this.isInReadLater ? [$r('app.color.primary')] : [$r('app.color.on_surface')])
             .margin({ right: 10 })
-          Text('加入浮窗')
+          Text(this.getReadLaterMenuLabel())
             .fontSize(14)
-            .fontColor($r('app.color.on_surface'))
+            .fontColor(this.isInReadLater ? $r('app.color.primary') : $r('app.color.on_surface'))
         }
         .width('100%')
         .padding({ left: 12, right: 12 })
@@ -4729,7 +4876,9 @@ export struct TopicDetailPage {
       .height(44)
       .onChange((selected: boolean) => {
         if (selected) {
-          ToastService.showLoginRequired();
+          this.handleReadLaterAction().catch((err: Object) => {
+            hilog.error(0x0000, TAG, 'Handle read later action failed: %{public}s', JSON.stringify(err));
+          });
         }
       })
 
@@ -4752,7 +4901,7 @@ export struct TopicDetailPage {
       .height(44)
       .onChange((selected: boolean) => {
         if (selected) {
-          ToastService.showLoginRequired();
+          this.openTopicNotificationSheet();
         }
       })
     }
@@ -4944,7 +5093,7 @@ export struct TopicDetailPage {
   }
 
   private openTopicShareImage(): void {
-    // 对齐安卓：底部栏“生成分享图片”默认分享主帖；若主帖未加载则提示
+    // 底部栏“生成分享图片”默认分享主帖；若主帖未加载则提示
     let first: Post | null = null;
     for (let i = 0; i < this.posts.length; i++) {
       const p: Post = this.posts[i];
@@ -5575,7 +5724,7 @@ export struct TopicDetailPage {
         .padding({ left: 16, right: 16, top: 8 })
       }
 
-      // 主题选择（对齐安卓）
+      // 主题选择
       Row() {
         ForEach(SHARE_IMAGE_THEME_INDICES, (idx: number) => {
           Column() {
@@ -5749,6 +5898,79 @@ export struct TopicDetailPage {
     this.imageContextPostNumber = 0;
     this.imageContextUsername = '';
     this.imageContextAvatarTemplate = '';
+  }
+
+  @Builder
+  TopicNotificationOption(level: number) {
+    Row() {
+      Column() {
+        Text(this.getNotificationLevelLabel(level))
+          .fontSize(16)
+          .fontWeight(this.notificationLevel === level ? FontWeight.Bold : FontWeight.Medium)
+          .fontColor(this.notificationLevel === level ? $r('app.color.primary') : $r('app.color.on_surface'))
+
+        Text(this.getTopicNotificationLevelDescription(level))
+          .fontSize(12)
+          .fontColor($r('app.color.on_surface_secondary'))
+          .margin({ top: 4 })
+      }
+      .layoutWeight(1)
+      .alignItems(HorizontalAlign.Start)
+
+      if (this.notificationLevel === level) {
+        SymbolGlyph($r('sys.symbol.checkmark'))
+          .fontSize(18)
+          .fontColor([$r('app.color.primary')])
+      }
+    }
+    .width('100%')
+    .padding({ left: 18, right: 18, top: 14, bottom: 14 })
+    .backgroundColor(this.notificationLevel === level ? $r('app.color.badge_background_light') : $r('app.color.surface'))
+    .borderRadius(14)
+    .alignItems(VerticalAlign.Center)
+    .enabled(!this.isTopicNotificationMutating)
+    .onClick(() => {
+      this.updateTopicNotificationLevel(level).catch((err: Object) => {
+        hilog.error(0x0000, TAG, 'Update topic notification level failed: %{public}s', JSON.stringify(err));
+      });
+    })
+  }
+
+  @Builder
+  TopicNotificationSheetBuilder() {
+    Column() {
+      Row() {
+        Text('订阅设置')
+          .fontSize(18)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.on_surface'))
+
+        Blank().layoutWeight(1)
+
+        if (this.isTopicNotificationMutating) {
+          LoadingProgress()
+            .width(18)
+            .height(18)
+        }
+      }
+      .width('100%')
+      .padding({ left: 18, right: 18, top: 8, bottom: 6 })
+      .alignItems(VerticalAlign.Center)
+
+      Column() {
+        this.TopicNotificationOption(0)
+        this.TopicNotificationOption(1)
+        this.TopicNotificationOption(2)
+        this.TopicNotificationOption(3)
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16, top: 8, bottom: 8 })
+      .alignItems(HorizontalAlign.Start)
+
+      Blank().height(12 + WindowManager.getSystemAvoidAreaBottomVp())
+    }
+    .width('100%')
+    .alignItems(HorizontalAlign.Start)
   }
 
   @Builder
@@ -6205,7 +6427,7 @@ export struct TopicDetailPage {
         .width('100%')
         .margin({ top: 12 })
 
-        // 相关链接（reflection links，对齐安卓 FluxDO）
+        // 相关链接（reflection links）
         if (post.linkCounts !== null) {
           PostLinks({
             linkCounts: post.linkCounts,
@@ -6271,7 +6493,7 @@ export struct TopicDetailPage {
         .margin({ top: 12 })
         .alignItems(VerticalAlign.Center)
 
-        // 折叠回复列表（离线 Mock：从帖子流中找 reply_to_post_number 指向当前楼层的帖子）
+        // 折叠回复列表（从帖子流中找 reply_to_post_number 指向当前楼层的帖子）
         if (post.replyCount > 0 && this.expandedRepliesPostNumber === post.postNumber) {
             Column() {
               Row() {
@@ -6476,7 +6698,7 @@ export struct TopicDetailPage {
   SmallActionItem(post: Post) {
     Column() {
       Row() {
-        // 图标（圆形容器，对齐 Flutter small_action）
+        // 图标（圆形容器）
         Column() {
           SymbolGlyph(this.getActionSymbol(post.actionCode))
             .fontSize(16)

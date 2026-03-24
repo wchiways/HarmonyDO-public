@@ -6,7 +6,7 @@ export class CustomEmojiEntry {
 }
 
 /**
- * Emoji / Flair URL 解析（对齐 FluxDO）
+ * Emoji / Flair URL 解析
  *
  * 用途：
  * - user_status.emoji（如 ":eyes:" / "eyes"） -> emoji 图片 URL

@@ -1,13 +1,13 @@
 /**
  * AnimatedGradientBackground
  *
- * 鸿蒙端复刻 Flutter/安卓的 AnimatedGradientBackground（流体渐变动效）。
+ * 用于 UserProfilePage 头图背景的流体渐变动效。
  * 目标：在 UserProfilePage 头图背景中实现“极光/流体”效果：
  * - 线性渐变打底
  * - 多个径向渐变色块按不同相位/速度流动
  * - 叠加高光
  *
- * 参考（Flutter 真值）：d:\harmony\fluxdo-main\lib\widgets\common\animated_gradient_background.dart
+ * 通过 Canvas 绘制底色、流动色块与高光。
  */
 
 interface RgbColor {
@@ -156,7 +156,7 @@ export struct AnimatedGradientBackground {
     this.context.fillStyle = baseGrad;
     this.context.fillRect(0, 0, w, h);
 
-    // 2) 色块叠加（加色，贴近 Flutter BlendMode.plus）
+    // 2) 色块叠加（加色混合）
     this.context.globalCompositeOperation = 'lighter';
     for (let i = 0; i < BLOB_CONFIGS.length; i++) {
       this.drawColorBlob(animValue, BLOB_CONFIGS[i]);

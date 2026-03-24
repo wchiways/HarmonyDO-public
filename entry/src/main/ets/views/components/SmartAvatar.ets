@@ -1,12 +1,12 @@
 /**
- * 智能头像组件 — 100% 复刻安卓版 SmartAvatar
+ * 智能头像组件
  *
  * 行为：
  * - 有 URL 时：CachedNetworkImage 加载圆形裁剪头像
  * - 无 URL 但有 fallbackText 时：取首字母大写居中，主色背景
  * - 都没有时：👤 图标占位
  *
- * 对应 Flutter: SmartAvatar(imageUrl, radius, fallbackText, backgroundColor)
+ * 支持按 URL、文本与默认图标回退显示头像。
  */
 import { UrlUtils } from '../../common/utils/UrlUtils';
 import { PreloadedDataService } from '../../services/messagebus/PreloadedDataService';

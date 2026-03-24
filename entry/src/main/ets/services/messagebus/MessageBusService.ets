@@ -240,7 +240,7 @@ export class MessageBusService {
     if (!this.isPolling) {
       this.startPolling();
     } else if (isNewChannel) {
-      // 对齐 FluxDO：新增频道时中止当前请求，立即让下一轮轮询包含新 payload
+      // 新增频道时中止当前请求，让下一轮轮询立即带上新 payload
       this.restartPollingIfRunning();
     }
   }
@@ -552,7 +552,7 @@ export class MessageBusService {
           req['connectTimeout'] = AppConstants.REQUEST_TIMEOUT;
           // 匿名 MessageBus 在部分设备/网络栈下会表现为“整段缓冲→dataEnd 才回调”，
           // 让客户端看起来只能每 ~25s 批量更新（与 anon_polling_interval 的连接生命周期一致）。
-          // 这里对匿名态主动缩短 readTimeout，强制每隔一段时间断开重连，从而更频繁地“冲刷缓冲区”。（对齐安卓端更接近实时的体验）
+          // 这里对匿名态主动缩短 readTimeout，定期断开重连以更频繁地刷新缓冲区。
           const readTimeoutMs: number = this.sharedSessionKey === null ? 5000 : 60000;
           req['readTimeout'] = readTimeoutMs;
           // 站点匿名轮询在部分设备上会默认走 HTTP/3（NetStack httpVer=3），
@@ -624,7 +624,7 @@ export class MessageBusService {
         const lower: string = errText.toLowerCase();
         const isTimeout: boolean = lower.indexOf('timeout') >= 0 || lower.indexOf('timed out') >= 0;
         if (isTimeout) {
-          // 对齐 FluxDO：长轮询超时视为正常（不进入指数退避）
+          // 长轮询超时视为正常结束，不进入指数退避
           this.failureCount = 0;
           if (AppConstants.DEBUG_TRACKING) {
             const elapsedMs: number = Date.now() - pollStartedAt;

@@ -6,10 +6,10 @@
  * 目标：复用首页/分类页一致的“最新/默认/+”样式与菜单样式。
  */
 
-// 筛选选项：游客态（对齐安卓：只显示 最新/排行榜/热门）
+// 筛选选项：游客态仅显示 最新/排行榜/热门
 export const SORT_FILTER_OPTIONS: string[] = ['最新', '排行榜', '热门'];
 
-// 筛选选项：登录态（对齐 FluxDO：新增 新话题/未读完/未浏览，并支持括号计数）
+// 筛选选项：登录态新增 新话题/未读完/未浏览，并支持括号计数
 export const SORT_FILTER_OPTIONS_LOGGED_IN: string[] = ['最新', '新话题', '未读完', '未浏览', '排行榜', '热门'];
 export const SORT_ORDER_OPTIONS: string[] = ['默认', '活跃度', '创建时间', '点赞数', '浏览量', '回复数', '参与者'];
 
@@ -22,7 +22,7 @@ export struct PillMenuButton {
   @Param rightMargin: number = 0;
 
   // 胶囊样式（默认用于筛选栏；紧凑模式可覆盖）
-  // 对齐安卓（Flutter FilterDropdown / OrderDropdown）：padding(10,6) + radius(8) + font(13)
+  // 默认胶囊尺寸：padding(10,6) + radius(8) + font(13)
   @Param valueFontSize: number = 13;
   @Param arrowFontSize: number = 16;
   @Param paddingLeft: number = 10;
@@ -32,7 +32,7 @@ export struct PillMenuButton {
   @Param radius: number = 8;
   @Param pillHeight: number = 32;
 
-  // 菜单样式：压缩 MenuItem 高度，避免遮挡内容（对齐安卓 PopupMenuItem 的紧凑观感）
+  // 菜单样式：压缩 MenuItem 高度，避免遮挡内容并保持紧凑观感
   @Param menuRadius: number = 12;
   @Param menuItemHeight: number = 40;
 

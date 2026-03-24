@@ -44,7 +44,7 @@ const REACTION_PAGE_SIZE: number = 20;
 /**
  * 他人主页（游客态可用）
  *
- * UI 对齐目标：安卓端“查看其他人的个人主页”页面（顶部深色头图 + 统计 + Tabs + 总结分区）
+ * 页面结构：顶部深色头图 + 统计 + Tabs + 总结分区
  *
  * 说明：
  * - 已接入真实后端：/u/{username}.json + /u/{username}/summary.json
@@ -915,7 +915,7 @@ export struct UserProfilePage {
     Column() {
       // FlexibleSpace（深色头图 + 遮罩 + 内容）
       Stack({ alignContent: Alignment.TopStart }) {
-        // 背景：复刻安卓 Flutter 的 AnimatedGradientBackground（流体动效）
+        // 背景：AnimatedGradientBackground 流体动效
         AnimatedGradientBackground()
           .width('100%')
           // 固定 Canvas 的渲染尺寸，避免随折叠高度变化触发 Canvas 重建/重置导致滚动时闪烁
@@ -1004,7 +1004,7 @@ export struct UserProfilePage {
   }
 
   private computeCollapseT(): number {
-    // 对齐 Flutter：t=1 展开，t→0 收起（公式来自 LayoutBuilder 近似）
+    // t=1 表示展开，t→0 表示收起
     const denom: number = Math.max(1, this.getExpandedHeight() - this.getTopBarHeight());
     return this.clamp(1 - this.scrollOffset / denom, 0, 1);
   }
@@ -1022,7 +1022,7 @@ export struct UserProfilePage {
     // easeOut(1 - t) 近似：1 - (1-x)^2
     const x: number = this.clamp(1 - t, 0, 1);
     const eased: number = 1 - (1 - x) * (1 - x);
-    // 对齐 Flutter：展开 0.6 → 收起 0.85
+    // 遮罩透明度：展开 0.6 → 收起 0.85
     return 0.6 + (0.85 - 0.6) * eased;
   }
 

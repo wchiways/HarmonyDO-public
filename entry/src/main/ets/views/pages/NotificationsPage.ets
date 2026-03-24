@@ -8,6 +8,7 @@ import { WindowManager } from '../../common/utils/WindowManager';
 import { ToastService } from '../../common/utils/ToastService';
 import { ApiClient } from '../../services/network/ApiClient';
 import { AuthService } from '../../services/auth/AuthService';
+import { NotificationTrackingService } from '../../services/messagebus/NotificationTrackingService';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorView } from '../components/ErrorView';
 import { SmartAvatar } from '../components/SmartAvatar';
@@ -128,6 +129,7 @@ export struct NotificationsPage {
     currentUser.allUnreadNotificationsCount = Math.max(0, nextCount);
     auth.setCurrentUser(currentUser, true);
     ApiClient.getInstance().setCachedCurrentUser(currentUser);
+    NotificationTrackingService.getInstance().syncStateFromCurrentUser(currentUser, true);
   }
 
   private markLocalNotificationRead(notificationId: number): void {
