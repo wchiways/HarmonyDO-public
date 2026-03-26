@@ -13,6 +13,7 @@ import { Poll, Post, PostReactionState } from '../../models/Post';
 import { UserActionResponse, UserReactionsResponse } from '../../models/UserAction';
 import { Emoji } from '../../models/Emoji';
 import { UploadedImage } from '../../models/UploadedImage';
+import { InviteLinkDetails, InviteLinkResponse } from '../../models/InviteLink';
 import { PreloadedDataService } from '../messagebus/PreloadedDataService';
 import { MessageBusService } from '../messagebus/MessageBusService';
 import { EmojiResolver } from '../../common/utils/EmojiResolver';
@@ -1457,74 +1458,200 @@ export class ApiClient {
   }
 
   /**
-   * 获取关注列表
+   * 更新话题通知级别
    */
-  async getFollowing(username: string): Promise<FollowUser[]> {
-    const raw: string = await this.http.get(ApiConstants.userFollowing(encodeURIComponent(username)));
-    const parsed: Object = JSON.parse(raw) as Object;
-    if (!(parsed instanceof Array)) {
-      return [];
-    }
-    const arr: Object[] = parsed as Object[];
-    const users: FollowUser[] = [];
-    for (let i = 0; i < arr.length; i++) {
-      users.push(FollowUser.fromJson(arr[i] as Record<string, Object>));
-    }
-    return users;
-  }
-
-  /**
-   * 获取粉丝列表
-   */
-  async getFollowers(username: string): Promise<FollowUser[]> {
-    const raw: string = await this.http.get(ApiConstants.userFollowers(encodeURIComponent(username)));
-    const parsed: Object = JSON.parse(raw) as Object;
-    if (!(parsed instanceof Array)) {
-      return [];
-    }
-    const arr: Object[] = parsed as Object[];
-    const users: FollowUser[] = [];
-    for (let i = 0; i < arr.length; i++) {
-      users.push(FollowUser.fromJson(arr[i] as Record<string, Object>));
-    }
-    return users;
+  async updateTopicNotificationLevel(topicId: number, level: number): Promise<void> {
+    const path: string = ApiConstants.topicNotificationLevel(topicId);
+    const clamped: number = Math.max(0, Math.min(3, Math.round(level)));
+    const body: Record<string, Object> = {};
+    body['notification_level'] = clamped;
+    await this.http.post(path, JSON.stringify(body));
   }
 
   /**
    * 关注用户
    */
   async followUser(username: string): Promise<void> {
-    await this.http.put(ApiConstants.followUser(encodeURIComponent(username)));
+    const trimmed: string = username !== undefined && username !== null ? username.trim() : '';
+    if (trimmed.length === 0) {
+      return;
+    }
+    const path: string = ApiConstants.followUser(trimmed);
+    const body: Record<string, Object> = {};
+    body['state'] = 'follow';
+    await this.http.post(path, JSON.stringify(body));
   }
 
   /**
    * 取消关注用户
    */
   async unfollowUser(username: string): Promise<void> {
-    await this.http.delete(ApiConstants.followUser(encodeURIComponent(username)));
-  }
-
-  /**
-   * 更新话题通知级别（0=静音, 1=常规, 2=跟踪, 3=关注）
-   */
-  async updateTopicNotificationLevel(topicId: number, level: number): Promise<void> {
-    if (topicId <= 0) {
+    const trimmed: string = username !== undefined && username !== null ? username.trim() : '';
+    if (trimmed.length === 0) {
       return;
     }
-    const form: Record<string, Object> = {};
-    form['notification_level'] = Math.max(0, Math.round(level)).toString();
-    await this.http.postFormText(ApiConstants.topicNotificationLevel(topicId), form);
+    const path: string = ApiConstants.followUser(trimmed);
+    const body: Record<string, Object> = {};
+    body['state'] = 'unfollow';
+    await this.http.post(path, JSON.stringify(body));
   }
 
   /**
-   * 更新用户通知级别（normal/mute/ignore）
+   * 更新用户通知级别（ignore/mute/regular 等）
    */
   async updateUserNotificationLevel(username: string, level: string, expiringAt: string = ''): Promise<void> {
-    const form: Record<string, Object> = {};
-    form['notification_level'] = level;
-    if (expiringAt.trim().length > 0) {
-      form['expiring_at'] = expiringAt.trim();
+    const trimmed: string = username !== undefined && username !== null ? username.trim() : '';
+    if (trimmed.length === 0) {
+      return;
     }
-    await this.http.putForm(ApiConstants.userNotificationLevel(encodeURIComponent(username)), form);
+    const path: string = ApiConstants.userNotificationLevel(trimmed);
+    const body: Record<string, Object> = {};
+    body['notification_level'] = level;
+    const exp: string = expiringAt !== undefined && expiringAt !== null ? expiringAt.trim() : '';
+    if (exp.length > 0) {
+      body['expiring_at'] = exp;
+    }
+    await this.http.post(path, JSON.stringify(body));
+  }
+
+  /**
+   * 获取关注列表
+   */
+  async getFollowing(username: string): Promise<FollowUser[]> {
+    const trimmed: string = username !== undefined && username !== null ? username.trim() : '';
+    if (trimmed.length === 0) {
+      return [];
+    }
+    const path: string = ApiConstants.userFollowing(trimmed);
+    const raw: string = await this.http.get(path);
+    const parsed: Object = JSON.parse(raw) as Object;
+    if (parsed === null || typeof parsed !== 'object') {
+      return [];
+    }
+    const root: Record<string, Object> = parsed as Record<string, Object>;
+    const usersVal = root['users'];
+    const list: FollowUser[] = [];
+    if (Array.isArray(usersVal)) {
+      const arr: Object[] = usersVal as Object[];
+      for (let i = 0; i < arr.length; i++) {
+        const item: Object = arr[i];
+        if (item === null || item === undefined || typeof item !== 'object') {
+          continue;
+        }
+        list.push(FollowUser.fromJson(item as Record<string, Object>));
+      }
+    }
+    return list;
+  }
+
+  /**
+   * 获取粉丝列表
+   */
+  async getFollowers(username: string): Promise<FollowUser[]> {
+    const trimmed: string = username !== undefined && username !== null ? username.trim() : '';
+    if (trimmed.length === 0) {
+      return [];
+    }
+    const path: string = ApiConstants.userFollowers(trimmed);
+    const raw: string = await this.http.get(path);
+    const parsed: Object = JSON.parse(raw) as Object;
+    if (parsed === null || typeof parsed !== 'object') {
+      return [];
+    }
+    const root: Record<string, Object> = parsed as Record<string, Object>;
+    const usersVal = root['users'];
+    const list: FollowUser[] = [];
+    if (Array.isArray(usersVal)) {
+      const arr: Object[] = usersVal as Object[];
+      for (let i = 0; i < arr.length; i++) {
+        const item: Object = arr[i];
+        if (item === null || item === undefined || typeof item !== 'object') {
+          continue;
+        }
+        list.push(FollowUser.fromJson(item as Record<string, Object>));
+      }
+    }
+    return list;
+  }
+
+  /**
+   * 创建邀请链接
+   */
+  async createInviteLink(
+    maxRedemptions: number,
+    expiresAt: Date | null,
+    description: string,
+    email: string
+  ): Promise<InviteLinkResponse> {
+    const body: Record<string, Object> = {};
+    body['max_redemptions_allowed'] = maxRedemptions;
+    if (expiresAt !== null) {
+      body['expires_at'] = expiresAt.toISOString();
+    }
+    const desc: string = description !== undefined && description !== null ? description.trim() : '';
+    if (desc.length > 0) {
+      body['description'] = desc;
+    }
+    const emailText: string = email !== undefined && email !== null ? email.trim() : '';
+    if (emailText.length > 0) {
+      body['email'] = emailText;
+    }
+    const raw: string = await this.http.post(ApiConstants.INVITES, JSON.stringify(body));
+    const json: Record<string, Object> = JSON.parse(raw) as Record<string, Object>;
+    return InviteLinkResponse.fromJson(json);
+  }
+
+  /**
+   * 获取待使用邀请列表
+   */
+  async getPendingInvites(username: string): Promise<InviteLinkResponse[]> {
+    const path: string = ApiConstants.userPendingInvites(encodeURIComponent(username));
+    const raw: string = await this.http.get(path);
+    const parsed: Object = JSON.parse(raw) as Object;
+
+    const list: InviteLinkResponse[] = [];
+
+    if (Array.isArray(parsed)) {
+      const arr: Object[] = parsed as Object[];
+      for (let i = 0; i < arr.length; i++) {
+        const item: Object = arr[i];
+        if (item === null || item === undefined || typeof item !== 'object') {
+          continue;
+        }
+        list.push(InviteLinkResponse.fromJson(item as Record<string, Object>));
+      }
+      return list;
+    }
+
+    if (parsed !== null && typeof parsed === 'object') {
+      const root: Record<string, Object> = parsed as Record<string, Object>;
+      const candidatesKeys: string[] = ['pending_invites', 'invites', 'data'];
+      for (let k = 0; k < candidatesKeys.length; k++) {
+        const key: string = candidatesKeys[k];
+        const val = root[key];
+        if (val === undefined || val === null || !Array.isArray(val)) {
+          continue;
+        }
+        const arr: Object[] = val as Object[];
+        for (let i = 0; i < arr.length; i++) {
+          const item: Object = arr[i];
+          if (item === null || item === undefined || typeof item !== 'object') {
+            continue;
+          }
+          list.push(InviteLinkResponse.fromJson(item as Record<string, Object>));
+        }
+        if (list.length > 0) {
+          return list;
+        }
+      }
+
+      const inviteVal = root['invite'];
+      if (inviteVal !== undefined && inviteVal !== null && typeof inviteVal === 'object') {
+        list.push(InviteLinkResponse.fromJson(root));
+        return list;
+      }
+    }
+
+    return list;
   }
 }

@@ -495,6 +495,146 @@
     {
       "name": "permission_write_imagevideo_reason",
       "value": "用于将生成的分享图片保存到系统相册"
+    },
+    {
+      "name": "trust_level_page_title",
+      "value": "信任要求"
+    },
+    {
+      "name": "trust_level_activity",
+      "value": "活跃程度"
+    },
+    {
+      "name": "trust_level_interaction",
+      "value": "互动参与"
+    },
+    {
+      "name": "trust_level_compliance",
+      "value": "合规记录"
+    },
+    {
+      "name": "trust_level_load_failed",
+      "value": "信任信息加载失败"
+    },
+    {
+      "name": "trust_level_parse_failed",
+      "value": "信任信息解析失败"
+    },
+    {
+      "name": "invite_page_title",
+      "value": "邀请链接"
+    },
+    {
+      "name": "invite_create_link",
+      "value": "生成邀请链接"
+    },
+    {
+      "name": "invite_creating",
+      "value": "生成中..."
+    },
+    {
+      "name": "invite_link_generated",
+      "value": "邀请链接已生成"
+    },
+    {
+      "name": "invite_link_copied",
+      "value": "邀请链接已复制"
+    },
+    {
+      "name": "invite_invite_members",
+      "value": "邀请成员"
+    },
+    {
+      "name": "invite_max_redemptions",
+      "value": "最多可使用次数"
+    },
+    {
+      "name": "invite_expiry_time",
+      "value": "有效期"
+    },
+    {
+      "name": "invite_fixed",
+      "value": "固定"
+    },
+    {
+      "name": "invite_latest_result",
+      "value": "最近结果"
+    },
+    {
+      "name": "invite_no_links",
+      "value": "暂无邀请链接"
+    },
+    {
+      "name": "invite_trust_level_too_low",
+      "value": "账号未达到 L3，无法创建邀请链接"
+    },
+    {
+      "name": "invite_permission_denied",
+      "value": "服务器拒绝了该账号的邀请权限"
+    },
+    {
+      "name": "invite_create_failed",
+      "value": "创建邀请链接失败"
+    },
+    {
+      "name": "invite_rate_limited",
+      "value": "操作过于频繁，请稍后再试"
+    },
+    {
+      "name": "invite_1_day",
+      "value": "1 天"
+    },
+    {
+      "name": "invite_7_days",
+      "value": "7 天"
+    },
+    {
+      "name": "invite_30_days",
+      "value": "30 天"
+    },
+    {
+      "name": "invite_90_days",
+      "value": "90 天"
+    },
+    {
+      "name": "invite_no_expiry",
+      "value": "永不过期"
+    },
+    {
+      "name": "invite_summary_day1",
+      "value": "链接可被 1 名用户使用，1 天后过期。"
+    },
+    {
+      "name": "invite_summary_never",
+      "value": "链接可被 1 名用户使用，永不过期。"
+    },
+    {
+      "name": "invite_copy",
+      "value": "复制链接"
+    },
+    {
+      "name": "invite_share",
+      "value": "分享"
+    },
+    {
+      "name": "invite_share_subject",
+      "value": "Linux.do 邀请链接"
+    },
+    {
+      "name": "invite_expand_options",
+      "value": "展开高级选项"
+    },
+    {
+      "name": "invite_collapse_options",
+      "value": "收起高级选项"
+    },
+    {
+      "name": "invite_description",
+      "value": "邀请说明（可选）"
+    },
+    {
+      "name": "invite_restriction_hint",
+      "value": "仅允许该邮箱或域名的用户使用（可选）"
     }
   ]
 }

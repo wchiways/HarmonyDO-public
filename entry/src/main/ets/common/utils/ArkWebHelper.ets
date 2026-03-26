@@ -15,6 +15,7 @@ export class ArkWebHelper {
       webview.WebviewController.setUserAgentForHosts(AppConstants.USER_AGENT, [
         'linux.do',
         'ping.linux.do',
+        'connect.linux.do',
         'challenges.cloudflare.com'
       ]);
       ArkWebHelper.configuredUserAgentHosts = true;

@@ -184,4 +184,12 @@ export class ApiConstants {
 
   /** 搜索标签（用于标签选择弹层） */
   static readonly TAG_SEARCH: string = '/tags/filter/search';
+
+  /** 创建邀请链接 */
+  static readonly INVITES: string = '/invites.json';
+
+  /** 获取待使用邀请列表 */
+  static userPendingInvites(username: string): string {
+    return `/u/${username}/invited/pending.json`;
+  }
 }
