@@ -80,6 +80,7 @@ export struct TopicListPage {
   private headerSnapTimerId: number = -1;
   private pullRefreshArmTimerId: number = -1;
   private floatingTabBarShowTimerId: number = -1;
+  private fabRefreshIntentStartedAt: number = 0;
   private lastHeaderScrollDirection: number = 0;
   private refreshGestureReady: boolean = true;
   private isListTouchActive: boolean = false;
@@ -148,6 +149,7 @@ export struct TopicListPage {
     this.clearHeaderSnapTimer();
     this.clearPullRefreshArmTimer();
     this.clearFloatingTabBarShowTimer();
+    this.clearFabRefreshIntent();
     this.clearIncomingLoadTimer();
     this.clearIncomingPollTimer();
     this.clearIncomingHighlightTimer();
@@ -686,6 +688,34 @@ export struct TopicListPage {
     }
   }
 
+  private clearFabRefreshIntent(): void {
+    this.fabRefreshIntentStartedAt = 0;
+  }
+
+  private resetFabToCreateMode(): void {
+    this.clearFabRefreshIntent();
+    if (this.fabRefreshMode) {
+      this.fabRefreshMode = false;
+    }
+  }
+
+  private handleFabModeByScroll(offset: number, remain: number): void {
+    // 默认保持“创建话题”；只有用户处于向上回滚内容的阶段时，切换为“刷新页面”。
+    // 这里使用滚动剩余量判断真实列表是否仍在向上移动，避免顶部下拉刷新手势误切换。
+    if (offset < -0.01 && remain < -0.01) {
+      if (!this.fabRefreshMode) {
+        this.closeHomeFabMenu();
+        this.fabRefreshMode = true;
+      }
+      this.clearFabRefreshIntent();
+      return;
+    }
+
+    if (offset > 0.01) {
+      this.resetFabToCreateMode();
+    }
+  }
+
   private hideFloatingTabBar(forceReport: boolean = false): void {
     this.clearFloatingTabBarShowTimer();
     this.setFloatingTabBarVisible(false, forceReport);
@@ -1158,21 +1188,7 @@ export struct TopicListPage {
   }
 
   private onRefreshFabClick(): void {
-    if (!this.canTriggerRefreshFromScroll()) {
-      this.clearHeaderSnapTimer();
-      this.headerOffset = 0;
-      this.listAtTop = true;
-      this.showFloatingTabBarImmediate(true);
-      this.fabRefreshMode = false;
-      this.listScroller.scrollTo({
-        xOffset: 0,
-        yOffset: 0,
-        animation: { duration: 300, curve: Curve.EaseOut }
-      });
-      return;
-    }
-
-    // 复位 Header 折叠状态，并回到顶部后刷新
+    this.clearFabRefreshIntent();
     this.clearHeaderSnapTimer();
     this.headerOffset = 0;
     this.listAtTop = true;
@@ -2498,9 +2514,6 @@ export struct TopicListPage {
               if (!this.isListTouchActive) {
                 this.schedulePullRefreshArm();
               }
-              if (this.fabRefreshMode) {
-                this.fabRefreshMode = false;
-              }
             })
             .onScrollFrameBegin((offset: number, state: ScrollState) => {
               // 两段折叠：先消费 offset 折叠/展开 Header，再把剩余 offset 交给 List 滚动
@@ -2530,9 +2543,7 @@ export struct TopicListPage {
               if (remain > 0.01) {
                 this.listAtTop = false;
                 this.disarmPullRefresh();
-                if (this.fabRefreshMode) {
-                  this.fabRefreshMode = false;
-                }
+                this.resetFabToCreateMode();
               }
               if (offset > 0.01) {
                 this.hideFloatingTabBar();
@@ -2543,16 +2554,7 @@ export struct TopicListPage {
               this.reportBarVisibility(false);
               const canTriggerRefreshNow: boolean = this.canTriggerRefreshFromScroll();
 
-              // FAB：向上滚动（朝顶部方向）→ 刷新模式；向下滚动 → 创建模式
-              if (offset < -0.01) {
-                if (canTriggerRefreshNow && this.refreshGestureReady && !this.fabRefreshMode) {
-                  this.fabRefreshMode = true;
-                }
-              } else if (offset > 0.01) {
-                if (this.fabRefreshMode) {
-                  this.fabRefreshMode = false;
-                }
-              }
+              this.handleFabModeByScroll(offset, remain);
               if (!canTriggerRefreshNow) {
                 this.disarmPullRefresh();
               }
