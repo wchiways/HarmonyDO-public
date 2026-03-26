@@ -11,6 +11,8 @@ import { CfChallengeService, CfChallengeDetectResult, CfVerifyContext } from './
 import { CfClearanceRefreshService } from './CfClearanceRefreshService';
 
 const TAG: string = 'HttpClient';
+const MAX_NETWORK_RETRY: number = 2;
+const NETWORK_RETRY_DELAY_MS: number = 1000;
 
 export interface CfGuardOptions {
   silent?: boolean;
@@ -76,7 +78,8 @@ export class HttpClient {
   private buildHeaders(
     accept: string = 'application/json',
     contentType: string = 'application/json',
-    extraHeaders: Record<string, string> | null = null
+    extraHeaders: Record<string, string> | null = null,
+    cookieUrl: string = ''
   ): Record<string, string> {
     const headers: Record<string, string> = {};
     headers['User-Agent'] = AppConstants.USER_AGENT;
@@ -86,7 +89,9 @@ export class HttpClient {
     if (this.csrfToken.length > 0) {
       headers['X-CSRF-Token'] = this.csrfToken;
     }
-    const cookieHeader: string = this.cookieStore.getCookieHeader();
+    const cookieHeader: string = cookieUrl.length > 0
+      ? this.cookieStore.getCookieHeader(cookieUrl)
+      : this.cookieStore.getCookieHeader();
     if (cookieHeader.length > 0) {
       headers['Cookie'] = cookieHeader;
     }
@@ -104,7 +109,7 @@ export class HttpClient {
     return headers;
   }
 
-  private syncCookiesFromResponseHeader(headerObj: Object | undefined | null, requestGeneration: number): void {
+  private syncCookiesFromResponseHeader(headerObj: Object | undefined | null, requestGeneration: number, cookieUrl: string = ''): void {
     if (headerObj === undefined || headerObj === null) return;
     if (!AuthSessionService.getInstance().isCurrentGeneration(requestGeneration)) {
       hilog.warn(0x0000, TAG, 'Skip Set-Cookie sync for stale auth session generation=%{public}d', requestGeneration);
@@ -129,7 +134,11 @@ export class HttpClient {
         }
       }
       if (setCookies.length > 0) {
-        this.cookieStore.ingestSetCookieHeaders(setCookies);
+        if (cookieUrl.length > 0) {
+          this.cookieStore.ingestSetCookieHeaders(setCookies, cookieUrl);
+        } else {
+          this.cookieStore.ingestSetCookieHeaders(setCookies);
+        }
       }
     } catch (err) {
       hilog.error(0x0000, TAG, 'Sync cookies failed: %{public}s', JSON.stringify(err));
@@ -515,51 +524,91 @@ export class HttpClient {
     body: HttpRequestBody,
     headers: Record<string, string> | null = null,
     connectTimeout: number | null = null,
-    readTimeout: number | null = null
+    readTimeout: number | null = null,
+    cookieUrl: string = ''
   ): Promise<Record<string, Object>> {
     const requestGeneration: number = AuthSessionService.getInstance().captureGeneration();
-    const httpRequest = http.createHttp();
-    try {
-      const req: Record<string, Object> = {};
-      req['method'] = method;
-      req['header'] = headers !== null ? headers : this.buildHeaders();
-      req['connectTimeout'] = connectTimeout !== null ? connectTimeout : AppConstants.REQUEST_TIMEOUT;
-      req['readTimeout'] = readTimeout !== null ? readTimeout : AppConstants.REQUEST_TIMEOUT;
-      this.applyTlsCompatibilityOptions(req, url);
-      if (this.hasBody(body)) {
-        if (typeof body === 'string') {
-          req['extraData'] = body;
-        } else if (body !== null) {
-          req['extraData'] = body as Object;
-        }
-      }
+    let lastError: Error | null = null;
 
-      const response = await httpRequest.request(url, req).catch((err: Object) => {
-        let errText: string = '';
-        try {
-          errText = JSON.stringify(err);
-        } catch (_) {
-          try {
-            errText = err !== null && err !== undefined ? err.toString() : '';
-          } catch (_) {
-            errText = '';
+    for (let attempt = 0; attempt <= MAX_NETWORK_RETRY; attempt++) {
+      const httpRequest = http.createHttp();
+      try {
+        const req: Record<string, Object> = {};
+        req['method'] = method;
+        req['header'] = headers !== null ? headers : this.buildHeaders('application/json', 'application/json', null, cookieUrl);
+        req['connectTimeout'] = connectTimeout !== null ? connectTimeout : AppConstants.REQUEST_TIMEOUT;
+        req['readTimeout'] = readTimeout !== null ? readTimeout : AppConstants.REQUEST_TIMEOUT;
+        this.applyTlsCompatibilityOptions(req, url);
+        if (this.hasBody(body)) {
+          if (typeof body === 'string') {
+            req['extraData'] = body;
+          } else if (body !== null) {
+            req['extraData'] = body as Object;
           }
         }
-        hilog.error(0x0000, TAG, 'Request %{public}s failed: %{public}s', url, errText);
-        throw new Error(`HTTP request failed: ${url}${errText.length > 0 ? `, ${errText}` : ''}`);
-      });
 
-      // 写回 Set-Cookie
-      this.syncCookiesFromResponseHeader(response.header, requestGeneration);
+        const response = await httpRequest.request(url, req).catch((err: Object) => {
+          let errText: string = '';
+          try {
+            errText = JSON.stringify(err);
+          } catch (_) {
+            try {
+              errText = err !== null && err !== undefined ? err.toString() : '';
+            } catch (_) {
+              errText = '';
+            }
+          }
+          hilog.error(0x0000, TAG, 'Request %{public}s failed (attempt %{public}d/%{public}d): %{public}s', url, attempt + 1, MAX_NETWORK_RETRY + 1, errText);
+          throw new Error(`HTTP request failed: ${url}${errText.length > 0 ? `, ${errText}` : ''}`);
+        });
 
-      const out: Record<string, Object> = {};
-      out['code'] = response.responseCode as number;
-      out['result'] = response.result as string;
-      out['header'] = response.header as Object;
-      return out;
-    } finally {
-      httpRequest.destroy();
+        // 写回 Set-Cookie
+        this.syncCookiesFromResponseHeader(response.header, requestGeneration, cookieUrl);
+
+        const out: Record<string, Object> = {};
+        out['code'] = response.responseCode as number;
+        out['result'] = response.result as string;
+        out['header'] = response.header as Object;
+        return out;
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        // 仅对网络层错误重试（连接超时、Socket 等），不重试业务层 HTTP 错误
+        if (attempt < MAX_NETWORK_RETRY && this.isRetryableNetworkError(lastError)) {
+          hilog.warn(0x0000, TAG, 'Retryable network error, retry after %{public}dms (attempt %{public}d/%{public}d) url=%{public}s', NETWORK_RETRY_DELAY_MS, attempt + 1, MAX_NETWORK_RETRY, url);
+          await this.sleep(NETWORK_RETRY_DELAY_MS);
+          continue;
+        }
+        throw lastError;
+      } finally {
+        httpRequest.destroy();
+      }
     }
+
+    throw lastError !== null ? lastError : new Error(`HTTP request failed: ${url}`);
+  }
+
+  private isRetryableNetworkError(err: Error): boolean {
+    const msg: string = err.message.toLowerCase();
+    // 网络层错误关键词：连接超时、连接被拒、网络不可达、Socket 关闭等
+    return msg.indexOf('http request failed') >= 0
+      && (msg.indexOf('timeout') >= 0
+        || msg.indexOf('timed out') >= 0
+        || msg.indexOf('connection') >= 0
+        || msg.indexOf('socket') >= 0
+        || msg.indexOf('network') >= 0
+        || msg.indexOf('econnrefused') >= 0
+        || msg.indexOf('econnreset') >= 0
+        || msg.indexOf('enotconn') >= 0
+        || msg.indexOf('ehostunreach') >= 0
+        || msg.indexOf('enetunreach') >= 0);
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise<void>((resolve) => {
+      setTimeout(() => {
+        resolve();
+      }, ms);
+    });
   }
 
   private async requestOnceBinary(
@@ -615,10 +664,11 @@ export class HttpClient {
     connectTimeout: number | null = null,
     readTimeout: number | null = null,
     guardOptions: CfGuardOptions | null = null,
-    retryAttempt: number = 0
+    retryAttempt: number = 0,
+    cookieUrl: string = ''
   ): Promise<Record<string, Object>> {
     const requestGeneration: number = AuthSessionService.getInstance().captureGeneration();
-    const resp: Record<string, Object> = await this.requestOnce(url, method, body, headers, connectTimeout, readTimeout);
+    const resp: Record<string, Object> = await this.requestOnce(url, method, body, headers, connectTimeout, readTimeout, cookieUrl);
     if (!AuthSessionService.getInstance().isCurrentGeneration(requestGeneration)) {
       hilog.warn(0x0000, TAG, 'Skip CF guard for stale auth session generation=%{public}d url=%{public}s', requestGeneration, url);
       return resp;
@@ -650,7 +700,9 @@ export class HttpClient {
     }
     const isCfHeader: boolean = this.isCloudflareForbidden(headerObj);
 
-    const cookieHeaderNow: string = this.cookieStore.getCookieHeader();
+    const cookieHeaderNow: string = cookieUrl.length > 0
+      ? this.cookieStore.getCookieHeader(cookieUrl)
+      : this.cookieStore.getCookieHeader();
     const cookieHeaderLength: number = cookieHeaderNow.length;
     const clearance: string | null = this.cookieStore.getCookieValue('cf_clearance');
     const hasCfClearance: boolean = clearance !== null && clearance.length > 0;
@@ -718,7 +770,7 @@ export class HttpClient {
           throw new Error('Cloudflare verification not effective');
         }
         // 验证成功后对原请求重试一次（跳过 guard，避免循环）
-        const retryHeaders: Record<string, string> | null = this.refreshHeadersForRetry(headers);
+        const retryHeaders: Record<string, string> | null = this.refreshHeadersForRetry(headers, cookieUrl);
         return await this.requestWithCfGuardDetailed(
           url,
           method,
@@ -728,7 +780,8 @@ export class HttpClient {
           connectTimeout,
           readTimeout,
           guardOptions,
-          retryAttempt + 1
+          retryAttempt + 1,
+          cookieUrl
         );
       }
       throw new Error('Cloudflare verification failed or cancelled');
@@ -737,7 +790,7 @@ export class HttpClient {
     return resp;
   }
 
-  private refreshHeadersForRetry(headers: Record<string, string> | null): Record<string, string> | null {
+  private refreshHeadersForRetry(headers: Record<string, string> | null, cookieUrl: string = ''): Record<string, string> | null {
     if (headers === null) {
       return null;
     }
@@ -752,8 +805,22 @@ export class HttpClient {
       next[key] = headers[key];
     }
 
-    const cookieHeader: string = this.cookieStore.getCookieHeader();
-    if (cookieHeader.length > 0) {
+    const cookieHeader: string = cookieUrl.length > 0
+      ? this.cookieStore.getCookieHeader(cookieUrl)
+      : this.cookieStore.getCookieHeader();
+    // 跨域请求时合并 BASE_URL 的 cookie（处理自动重定向场景）
+    if (cookieUrl.length > 0 && !cookieUrl.startsWith(this.baseUrl)) {
+      const baseCookie: string = this.cookieStore.getCookieHeader();
+      if (baseCookie.length > 0) {
+        if (cookieHeader.length > 0) {
+          next['Cookie'] = cookieHeader + '; ' + baseCookie;
+        } else {
+          next['Cookie'] = baseCookie;
+        }
+      } else if (cookieHeader.length > 0) {
+        next['Cookie'] = cookieHeader;
+      }
+    } else if (cookieHeader.length > 0) {
       next['Cookie'] = cookieHeader;
     }
     return next;
@@ -915,6 +982,60 @@ export class HttpClient {
       readTimeoutMs,
       guardOptions,
       0
+    );
+    const codeVal = resp['code'];
+    const code: number = codeVal !== undefined && codeVal !== null ? codeVal as number : 0;
+    const resultVal = resp['result'];
+    const result: string = resultVal !== undefined && resultVal !== null ? resultVal as string : '';
+
+    if (this.isSuccessStatus(code)) {
+      return result;
+    }
+    throw new Error(`HTTP ${code}`);
+  }
+
+  /**
+   * GET 文本（完整 URL，用于跨域请求如 connect.linux.do）
+   * 经过 CF challenge 处理；跨域请求时合并 BASE_URL 的 cookie（处理自动重定向场景）
+   */
+  async getTextByFullUrl(
+    url: string,
+    accept: string = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    readTimeoutMs: number = 60000
+  ): Promise<string> {
+    await this.cookieStore.init();
+    const full: string = url !== undefined && url !== null ? url.trim() : '';
+    if (full.length === 0) {
+      throw new Error('Empty url');
+    }
+
+    // 合并目标 URL 和 BASE_URL 两个域的 cookie
+    // 原因：HTTP 库自动跟随重定向时不会重新构建 Cookie header
+    // 请求 connect.linux.do → 302 → linux.do 时，需要 linux.do 的 cf_clearance 等 cookie
+    const headers: Record<string, string> = this.buildHeaders(accept, 'text/plain', null, full);
+    if (!full.startsWith(this.baseUrl)) {
+      const baseCookie: string = this.cookieStore.getCookieHeader();
+      const currentCookie: string = headers['Cookie'] !== undefined ? headers['Cookie'] as string : '';
+      if (baseCookie.length > 0) {
+        if (currentCookie.length > 0) {
+          headers['Cookie'] = currentCookie + '; ' + baseCookie;
+        } else {
+          headers['Cookie'] = baseCookie;
+        }
+      }
+    }
+
+    const resp: Record<string, Object> = await this.requestWithCfGuardDetailed(
+      full,
+      http.RequestMethod.GET,
+      null,
+      false,
+      headers,
+      null,
+      readTimeoutMs,
+      null,
+      0,
+      full
     );
     const codeVal = resp['code'];
     const code: number = codeVal !== undefined && codeVal !== null ? codeVal as number : 0;

@@ -99,9 +99,9 @@ export class Category {
  * 站点信息响应
  */
 export class SiteResponse {
-  static readonly DEFAULT_MIN_POST_LENGTH: number = 20;
-  static readonly DEFAULT_MIN_FIRST_POST_LENGTH: number = 20;
-  static readonly DEFAULT_MIN_TOPIC_TITLE_LENGTH: number = 15;
+  static readonly DEFAULT_MIN_POST_LENGTH: number = 4;
+  static readonly DEFAULT_MIN_FIRST_POST_LENGTH: number = 6;
+  static readonly DEFAULT_MIN_TOPIC_TITLE_LENGTH: number = 8;
 
   categories: Category[] = [];
   minPostLength: number = SiteResponse.DEFAULT_MIN_POST_LENGTH;

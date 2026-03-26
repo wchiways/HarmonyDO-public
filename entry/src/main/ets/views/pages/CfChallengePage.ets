@@ -38,6 +38,7 @@ interface ChallengePageSnapshot {
 const NO_CHALLENGE_PRIMARY_DELAY_MS: number = 1500;
 const NO_CHALLENGE_RETRY_DELAY_MS: number = 3500;
 const NO_CHALLENGE_MAX_RETRY_COUNT: number = 2;
+const VERIFY_TIMEOUT_MS: number = 60000;
 
 @ComponentV2
 export struct CfChallengePage {
@@ -49,6 +50,7 @@ export struct CfChallengePage {
   private controller: webview.WebviewController = new webview.WebviewController('cf_challenge');
   private pollTimerId: number = -1;
   private noChallengeTimerId: number = -1;
+  private verifyTimeoutId: number = -1;
   private finished: boolean = false;
 
   private bridge: CfChallengeBridge | null = null;
@@ -58,6 +60,7 @@ export struct CfChallengePage {
   private challengePlatformResponseSeen: boolean = false;
   private initialCfClearanceSnapshot: string = '';
   private checkingClearance: boolean = false;
+  private confirmRetryCount: number = 0;
   private noChallengeRetryCount: number = 0;
   private fallbackToBaseUrlUsed: boolean = false;
 
@@ -68,6 +71,8 @@ export struct CfChallengePage {
     if (this.bridge === null) {
       this.bridge = new CfChallengeBridge(this);
     }
+
+    this.startVerifyTimeout();
 
     CookieStore.getInstance().init()
       .then(() => {
@@ -87,6 +92,7 @@ export struct CfChallengePage {
   aboutToDisappear(): void {
     this.stopPolling();
     this.stopNoChallengeCheck();
+    this.stopVerifyTimeout();
   }
 
   private prepareCookies(): void {
@@ -119,6 +125,7 @@ export struct CfChallengePage {
     this.challengePlatformResponseSeen = false;
     this.noChallengeRetryCount = 0;
     this.fallbackToBaseUrlUsed = false;
+    this.confirmRetryCount = 0;
   }
 
   private logEnterReason(): void {
@@ -194,6 +201,23 @@ export struct CfChallengePage {
     }
   }
 
+  private startVerifyTimeout(): void {
+    this.stopVerifyTimeout();
+    this.verifyTimeoutId = setTimeout(() => {
+      this.verifyTimeoutId = -1;
+      if (this.finished) return;
+      hilog.warn(0x0000, TAG, 'Verify timeout after %{public}dms, auto exit', VERIFY_TIMEOUT_MS);
+      this.onNoChallengeFailure();
+    }, VERIFY_TIMEOUT_MS);
+  }
+
+  private stopVerifyTimeout(): void {
+    if (this.verifyTimeoutId >= 0) {
+      clearTimeout(this.verifyTimeoutId);
+      this.verifyTimeoutId = -1;
+    }
+  }
+
   private checkClearanceCookie(): void {
     if (this.finished || this.checkingClearance) return;
     this.checkingClearance = true;
@@ -244,13 +268,30 @@ export struct CfChallengePage {
 
     const snapshot: ChallengePageSnapshot = await this.readChallengePageSnapshot();
     if (snapshot.hasActiveChallenge) {
+      // 如果 challenge-platform 响应已收到（RC 验证已完成），给予有限次宽限后强制成功
+      // 因为验证后页面 DOM 可能仍残留 challenge 相关信号（如 cf_chl_opt）
+      if (this.challengePlatformResponseSeen) {
+        this.confirmRetryCount += 1;
+        if (this.confirmRetryCount >= 6) {
+          hilog.info(
+            0x0000,
+            TAG,
+            'Challenge signals still visible after %{public}d checks but RC completed, force success signals=%{public}s',
+            this.confirmRetryCount,
+            snapshot.activeSignals.length > 0 ? snapshot.activeSignals : '-'
+          );
+          this.onSuccess();
+          return;
+        }
+      }
       hilog.info(
         0x0000,
         TAG,
-        'New cf_clearance detected but challenge page still visible, continue waiting signals=%{public}s title=%{public}s url=%{public}s',
+        'New cf_clearance detected but challenge page still visible, continue waiting signals=%{public}s title=%{public}s url=%{public}s retryCount=%{public}d',
         snapshot.activeSignals.length > 0 ? snapshot.activeSignals : '-',
         snapshot.title,
-        snapshot.href
+        snapshot.href,
+        this.confirmRetryCount
       );
       return;
     }
@@ -420,8 +461,7 @@ export struct CfChallengePage {
           || lowerText.indexOf('checking your browser before accessing') >= 0;
         var hasChallengeHtml = lowerHtml.indexOf('challenge-running') >= 0
           || lowerHtml.indexOf('challenge-stage') >= 0
-          || lowerHtml.indexOf('cf_chl_opt') >= 0
-          || lowerHtml.indexOf('challenge-platform') >= 0;
+          || lowerHtml.indexOf('cf_chl_opt') >= 0;
         var signals = [];
         if (hasChallengeTitle) {
           signals.push('title');
@@ -931,6 +971,7 @@ export struct CfChallengePage {
     this.finished = true;
     this.stopPolling();
     this.stopNoChallengeCheck();
+    this.stopVerifyTimeout();
     const cf: string | null = CookieStore.getInstance().getCookieValue('cf_clearance');
     const cfLen: number = cf !== null ? (cf as string).length : 0;
     hilog.info(
@@ -955,6 +996,7 @@ export struct CfChallengePage {
     this.finished = true;
     this.stopPolling();
     this.stopNoChallengeCheck();
+    this.stopVerifyTimeout();
     hilog.warn(
       0x0000,
       TAG,
@@ -974,6 +1016,7 @@ export struct CfChallengePage {
     this.finished = true;
     this.stopPolling();
     this.stopNoChallengeCheck();
+    this.stopVerifyTimeout();
     hilog.info(
       0x0000,
       TAG,

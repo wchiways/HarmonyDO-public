@@ -495,6 +495,30 @@
     {
       "name": "permission_write_imagevideo_reason",
       "value": "用于将生成的分享图片保存到系统相册"
+    },
+    {
+      "name": "trust_level_page_title",
+      "value": "信任要求"
+    },
+    {
+      "name": "trust_level_activity",
+      "value": "活跃程度"
+    },
+    {
+      "name": "trust_level_interaction",
+      "value": "互动参与"
+    },
+    {
+      "name": "trust_level_compliance",
+      "value": "合规记录"
+    },
+    {
+      "name": "trust_level_load_failed",
+      "value": "信任信息加载失败"
+    },
+    {
+      "name": "trust_level_parse_failed",
+      "value": "信任信息解析失败"
     }
   ]
 }

@@ -21,6 +21,7 @@ export class RouteConstants {
   static readonly PAGE_IMAGE_PREVIEW: string = 'ImagePreview';
   static readonly PAGE_WEB_VIEW: string = 'WebView';
   static readonly PAGE_CF_CHALLENGE: string = 'CfChallenge';
+  static readonly PAGE_TRUST_LEVEL: string = 'TrustLevel';
 }
 
 /**
@@ -247,6 +248,10 @@ export class RouterManager {
 
   static pushBrowsingHistory(): void {
     RouterManager.pushPath(RouteConstants.PAGE_BROWSING_HISTORY);
+  }
+
+  static pushTrustLevel(): void {
+    RouterManager.pushPath(RouteConstants.PAGE_TRUST_LEVEL);
   }
 
   /**

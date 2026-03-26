@@ -5,8 +5,8 @@ import { CfClearanceRefreshService } from './CfClearanceRefreshService';
 
 const TAG: string = 'CfChallengeService';
 const COOLDOWN_MS: number = 30 * 1000;
-const CLEARANCE_CONFIRM_DELAY_MS: number = 1500;
-const CLEARANCE_CONFIRM_RETRY_COUNT: number = 3;
+const CLEARANCE_CONFIRM_DELAY_MS: number = 2000;
+const CLEARANCE_CONFIRM_RETRY_COUNT: number = 5;
 const CLEARANCE_CONFIRM_RETRY_INTERVAL_MS: number = 500;
 
 export interface CfChallengeDetectResult {
@@ -84,7 +84,10 @@ export class CfChallengeService {
       out.hits.push('challenge-platform');
     }
 
-    out.isChallenge = out.hits.length > 0;
+    // challenge-platform 单独出现不判定为 CF challenge（所有 CF 保护的页面都包含此脚本路径）
+    // 必须配合 cf_chl_opt 或 just_a_moment 才可靠
+    const strongHits: number = out.hits.length - (out.hits.indexOf('challenge-platform') >= 0 ? 1 : 0);
+    out.isChallenge = strongHits > 0;
     return out;
   }
 

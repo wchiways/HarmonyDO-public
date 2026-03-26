@@ -1330,7 +1330,7 @@ export struct ProfilePage {
         title: $r('app.string.profile_trust_requirements'),
         subtitle: $r('app.string.profile_growth_trust_hint'),
         showDivider: this.canShowInviteLinks(),
-        onClick: () => { this.showPendingToast('信任要求'); }
+        onClick: () => { RouterManager.pushTrustLevel(); }
       })
       if (this.canShowInviteLinks()) {
         this.OptionItem({
