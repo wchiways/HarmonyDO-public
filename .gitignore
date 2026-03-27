@@ -22,3 +22,5 @@ jscrash-*.txt
 /_git_backups/
 /_gitee_sanitize_tmp/
 /$null
+.serena/
+temp/

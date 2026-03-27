@@ -18,6 +18,8 @@ import { MyBadgesPage } from '../views/pages/MyBadgesPage';
 import { BrowsingHistoryPage } from '../views/pages/BrowsingHistoryPage';
 import { TrustLevelPage } from '../views/pages/TrustLevelPage';
 import { InviteLinksPage } from '../views/pages/InviteLinksPage';
+import { AboutAppPage } from '../views/pages/AboutAppPage';
+import { OpenSourceInfoPage } from '../views/pages/OpenSourceInfoPage';
 import { CfRefreshHost } from '../views/components/CfRefreshHost';
 import { ReadLaterBubble } from '../views/components/ReadLaterBubble';
 import { Topic } from '../models/Topic';
@@ -338,6 +340,10 @@ struct Index {
       TrustLevelPage()
     } else if (name === RouteConstants.PAGE_INVITE_LINKS) {
       InviteLinksPage()
+    } else if (name === RouteConstants.PAGE_ABOUT_APP) {
+      AboutAppPage()
+    } else if (name === RouteConstants.PAGE_OPEN_SOURCE_INFO) {
+      OpenSourceInfoPage()
     }
   }
 

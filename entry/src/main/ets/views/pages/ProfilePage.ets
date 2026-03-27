@@ -1469,7 +1469,7 @@ export struct ProfilePage {
         title: $r('app.string.profile_about_app'),
         subtitle: $r('app.string.profile_service_about_hint'),
         showDivider: false,
-        onClick: () => { this.showPendingToast('关于 HarmonyDO'); }
+        onClick: () => { RouterManager.pushAboutApp(); }
       })
     }
     .width('100%')
