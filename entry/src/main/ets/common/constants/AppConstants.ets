@@ -42,6 +42,12 @@ export class AppConstants {
   /** 应用名 */
   static readonly APP_NAME: string = 'HarmonyDO';
 
+  /** 源代码仓库 */
+  static readonly SOURCE_CODE_URL: string = 'https://github.com/Amaz1ny/HarmonyDO-public';
+
+  /** 问题反馈地址 */
+  static readonly ISSUES_URL: string = 'https://github.com/Amaz1ny/HarmonyDO-public/issues';
+
   /** User-Agent */
   static readonly USER_AGENT: string =
     'Mozilla/5.0 (Phone; OpenHarmony 6.1; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36  ArkWeb/6.1.0.100 Mobile HuaweiBrowser/6.1.1.341';

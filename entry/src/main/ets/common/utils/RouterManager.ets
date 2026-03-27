@@ -23,6 +23,8 @@ export class RouteConstants {
   static readonly PAGE_CF_CHALLENGE: string = 'CfChallenge';
   static readonly PAGE_TRUST_LEVEL: string = 'TrustLevel';
   static readonly PAGE_INVITE_LINKS: string = 'InviteLinks';
+  static readonly PAGE_ABOUT_APP: string = 'AboutApp';
+  static readonly PAGE_OPEN_SOURCE_INFO: string = 'OpenSourceInfo';
 }
 
 /**
@@ -257,6 +259,14 @@ export class RouterManager {
 
   static pushInviteLinks(): void {
     RouterManager.pushPath(RouteConstants.PAGE_INVITE_LINKS);
+  }
+
+  static pushAboutApp(): void {
+    RouterManager.pushPath(RouteConstants.PAGE_ABOUT_APP);
+  }
+
+  static pushOpenSourceInfo(): void {
+    RouterManager.pushPath(RouteConstants.PAGE_OPEN_SOURCE_INFO);
   }
 
   /**
