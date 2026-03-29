@@ -182,6 +182,8 @@ export struct TopicDetailPage {
   @Local showTitle: boolean = false;
   @Local scrollOffset: number = 0;
   private _bottomBarDelta: number = 0;
+  private lastListScrollDelta: number = 0;
+  private autoLoadPreviousBlockedUntil: number = 0;
   private listScroller: Scroller = new Scroller();
   private scrollSyncTimerId: number = -1;
   private bottomBarShowTimerId: number = -1;
@@ -2136,6 +2138,8 @@ export struct TopicDetailPage {
     this.showBottomBar = true;
     this.bottomBarVisibility = 1;
     this._bottomBarDelta = 0;
+    this.lastListScrollDelta = 0;
+    this.autoLoadPreviousBlockedUntil = 0;
     this.expandedRepliesPostNumber = 0;
     this.expandedRepliesLoading = false;
     this.expandedRepliesErrorMessage = '';
@@ -2143,6 +2147,9 @@ export struct TopicDetailPage {
     this.didScrollToInitial = false;
     this.hasMoreBefore = false;
     this.hasMoreAfter = false;
+    if (requestedPostNumber > 1) {
+      this.blockAutoLoadPrevious(1500);
+    }
 
     try {
       const apiClient: ApiClient = ApiClient.getInstance();
@@ -2775,6 +2782,7 @@ export struct TopicDetailPage {
     if (targetPostIndex < 0) return;
 
     this.didScrollToInitial = true;
+    this.blockAutoLoadPrevious();
     this.armPendingHighlight(this.targetPostNumber);
     const listIndex: number = this.getListIndexForPostArrayIndex(targetPostIndex);
     setTimeout(() => {
@@ -2937,6 +2945,18 @@ export struct TopicDetailPage {
     return 1 + (this.shouldShowLoadPreviousEntry() ? 1 : 0);
   }
 
+  private blockAutoLoadPrevious(durationMs: number = 1200): void {
+    const safeDuration: number = durationMs > 0 ? durationMs : 0;
+    const until: number = Date.now() + safeDuration;
+    if (until > this.autoLoadPreviousBlockedUntil) {
+      this.autoLoadPreviousBlockedUntil = until;
+    }
+  }
+
+  private isAutoLoadPreviousBlocked(): boolean {
+    return Date.now() < this.autoLoadPreviousBlockedUntil;
+  }
+
   private getListIndexForPostArrayIndex(postIndex: number): number {
     return this.getPostListStartIndex() + postIndex;
   }
@@ -3002,6 +3022,38 @@ export struct TopicDetailPage {
     return [minIndex, maxIndex];
   }
 
+  private getVisibleAnchorPostIdForPrepend(): number {
+    if (this.posts.length === 0) return 0;
+    const postStartIndex: number = this.getPostListStartIndex();
+    let postIndex: number = this.lastVisibleStartIndex - postStartIndex;
+    if (postIndex < 0 || postIndex >= this.posts.length) {
+      postIndex = 0;
+    }
+    return this.posts[postIndex].id;
+  }
+
+  private shouldAutoLoadPreviousByScroll(listIndex: number): boolean {
+    if (this.isSearchMode || this.isLoading) return false;
+    if (this.isLoadingPrevious || this.isLoadPreviousFailed) return false;
+    if (!this.hasMoreBefore) return false;
+    if (this.streamIds.length === 0 || this.posts.length === 0) return false;
+    if (this.isAutoLoadPreviousBlocked()) return false;
+    if (this.lastListScrollDelta >= -0.01) return false;
+
+    const visibleIndex: number = listIndex >= 0 ? listIndex : this.lastVisibleStartIndex;
+    if (visibleIndex < 0) return false;
+
+    const preloadThreshold: number = this.getPostListStartIndex() + 3;
+    return visibleIndex <= preloadThreshold;
+  }
+
+  private tryAutoLoadPreviousByScroll(listIndex: number): void {
+    if (!this.shouldAutoLoadPreviousByScroll(listIndex)) {
+      return;
+    }
+    this.loadPreviousBefore();
+  }
+
   private updateBoundaryState(): void {
     if (this.posts.length === 0 || this.streamIds.length === 0) {
       this.hasMoreBefore = false;
@@ -3052,6 +3104,7 @@ export struct TopicDetailPage {
   private scrollToPostArrayIndex(postIndex: number): boolean {
     if (postIndex < 0 || postIndex >= this.posts.length) return false;
     const listIndex: number = this.getListIndexForPostArrayIndex(postIndex);
+    this.blockAutoLoadPrevious(900);
     setTimeout(() => {
       try {
         this.listScroller.scrollToIndex(listIndex, true, ScrollAlign.START);
@@ -3203,7 +3256,7 @@ export struct TopicDetailPage {
       return;
     }
 
-    const anchorId: number = this.posts.length > 0 ? this.posts[0].id : 0;
+    const anchorId: number = this.getVisibleAnchorPostIdForPrepend();
 
     this.isLoadingPrevious = true;
     this.isLoadPreviousFailed = false;
@@ -4173,7 +4226,12 @@ export struct TopicDetailPage {
                   this.scrollOffset = 0;
                   this.showTitle = false;
                   this._bottomBarDelta = 0;
+                  this.lastListScrollDelta = 0;
                   this.showBottomBarImmediate();
+                  if (this.isAutoLoadPreviousBlocked()) {
+                    return;
+                  }
+                  this.loadPreviousBefore();
                 })
                 .onReachEnd(() => {
                   this.loadMoreAfter();
@@ -4184,8 +4242,10 @@ export struct TopicDetailPage {
                   const idx: number = start >= 0 ? start : center;
                   this.updateCurrentPostIndexFromScrollIndex(idx);
                   this.maybeTriggerPendingHighlight(start, end);
+                  this.tryAutoLoadPreviousByScroll(idx);
                 })
                 .onScrollFrameBegin((offset: number, state: ScrollState) => {
+                  this.lastListScrollDelta = offset;
                   if (this.reactionPickerPostId > 0 && Math.abs(offset) > 0.1) {
                     this.closeReactionPicker();
                   }
